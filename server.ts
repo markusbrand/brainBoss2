@@ -3,11 +3,12 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { initDatabase, checkDbStatus, getRemoteData, syncPushData } from "./src/server/db";
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || "3000", 10);
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -28,7 +29,56 @@ const getGeminiClient = () => {
 
 // API: Health check
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  res.json({
+    status: "ok",
+    port: PORT,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// API: Cloudflare Zero Trust / Access Authentication status
+app.get("/api/auth/me", (req, res) => {
+  const cfUserEmail = req.headers["cf-access-authenticated-user-email"] as string | undefined;
+  const cfJwt = req.headers["cf-access-jwt-assertion"] as string | undefined;
+  const cfCountry = req.headers["cf-ipcountry"] as string | undefined;
+  const cfRay = req.headers["cf-ray"] as string | undefined;
+  const clientIp = (req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || req.socket.remoteAddress) as string | undefined;
+
+  res.json({
+    authenticated: Boolean(cfUserEmail),
+    userEmail: cfUserEmail || null,
+    provider: cfUserEmail ? "cloudflare_access" : "local",
+    country: cfCountry || null,
+    ip: clientIp || null,
+    hasJwt: Boolean(cfJwt),
+    rayId: cfRay || null,
+  });
+});
+
+// API: PostgreSQL DB status
+app.get("/api/db/status", async (_req, res) => {
+  const status = await checkDbStatus();
+  res.json(status);
+});
+
+// API: Pull data from PostgreSQL DB
+app.get("/api/db/sync", async (_req, res) => {
+  try {
+    const data = await getRemoteData();
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API: Push & synchronize data with PostgreSQL DB
+app.post("/api/db/sync", async (req, res) => {
+  try {
+    const synced = await syncPushData(req.body);
+    res.json({ success: true, data: synced });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // API: Generate AI Math Story Quest
@@ -658,6 +708,13 @@ Make sure every question has 4 distinct options and the correctAnswer is exactly
 });
 
 async function startServer() {
+  // Initialize PostgreSQL database connection and tables if configured
+  try {
+    await initDatabase();
+  } catch (err) {
+    console.warn("Database initialization deferred/skipped:", err);
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

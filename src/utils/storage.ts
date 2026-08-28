@@ -5,6 +5,62 @@ const STORAGE_KEY_LEGACY = 'brainboss_player_profile_v2';
 const STORAGE_KEY_CUSTOM_QUESTIONS = 'brainboss_custom_questions_v1';
 const STORAGE_KEY_SCANNED_BATCHES = 'brainboss_scanned_batches_v1';
 
+// Debounced background sync with PostgreSQL server backend if available
+let syncTimer: any = null;
+
+export const triggerRemoteDbSync = () => {
+  if (typeof window === 'undefined') return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(async () => {
+    try {
+      const parentConfig = loadParentConfig();
+      const customQuestions = loadCustomQuestions();
+      const scannedBatches = loadScannedBatches();
+
+      await fetch('/api/db/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentConfig, customQuestions, scannedBatches }),
+      });
+    } catch {
+      // Offline fallback: keep localStorage intact
+    }
+  }, 1200);
+};
+
+export const fetchRemoteDbData = async (): Promise<boolean> => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const res = await fetch('/api/db/sync');
+    if (!res.ok) return false;
+    const json = await res.json();
+    if (!json.success || !json.data) return false;
+
+    const { parentConfig, customQuestions, scannedBatches } = json.data;
+
+    let hasUpdates = false;
+
+    if (parentConfig && parentConfig.kids && parentConfig.kids.length > 0) {
+      localStorage.setItem(STORAGE_KEY_PARENT, JSON.stringify(parentConfig));
+      hasUpdates = true;
+    }
+
+    if (Array.isArray(customQuestions) && customQuestions.length > 0) {
+      localStorage.setItem(STORAGE_KEY_CUSTOM_QUESTIONS, JSON.stringify(customQuestions));
+      hasUpdates = true;
+    }
+
+    if (Array.isArray(scannedBatches) && scannedBatches.length > 0) {
+      localStorage.setItem(STORAGE_KEY_SCANNED_BATCHES, JSON.stringify(scannedBatches));
+      hasUpdates = true;
+    }
+
+    return hasUpdates;
+  } catch {
+    return false;
+  }
+};
+
 export const loadScannedBatches = (): ScannedMaterialBatch[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SCANNED_BATCHES);
@@ -20,6 +76,7 @@ export const loadScannedBatches = (): ScannedMaterialBatch[] => {
 export const saveScannedBatches = (batches: ScannedMaterialBatch[]): void => {
   try {
     localStorage.setItem(STORAGE_KEY_SCANNED_BATCHES, JSON.stringify(batches));
+    triggerRemoteDbSync();
   } catch (err) {
     console.error('Failed to save scanned batches:', err);
   }
@@ -96,6 +153,7 @@ export const loadCustomQuestions = (): CustomQuestion[] => {
 export const saveCustomQuestions = (questions: CustomQuestion[]): void => {
   try {
     localStorage.setItem(STORAGE_KEY_CUSTOM_QUESTIONS, JSON.stringify(questions));
+    triggerRemoteDbSync();
   } catch (err) {
     console.error('Failed to save custom questions:', err);
   }
@@ -415,6 +473,7 @@ export const loadParentConfig = (): ParentConfig => {
 export const saveParentConfig = (config: ParentConfig): void => {
   try {
     localStorage.setItem(STORAGE_KEY_PARENT, JSON.stringify(config));
+    triggerRemoteDbSync();
   } catch (err) {
     console.error('Failed to save parent config:', err);
   }

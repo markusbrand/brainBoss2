@@ -20,6 +20,7 @@ import {
   usePowerUpItem,
   claimDailyQuest,
   getActiveKidProfile,
+  fetchRemoteDbData,
 } from './utils/storage';
 import { soundFx } from './utils/audio';
 import { Navbar } from './components/Navbar';
@@ -77,6 +78,17 @@ export default function App() {
     setParentConfig(updatedConfig);
     saveParentConfig(updatedConfig);
   };
+
+  // Initial sync with remote PostgreSQL database if hosted
+  useEffect(() => {
+    fetchRemoteDbData().then((hasUpdates) => {
+      if (hasUpdates) {
+        const freshConfig = loadParentConfig();
+        setParentConfig(freshConfig);
+        setProfile(getActiveKidProfile(freshConfig));
+      }
+    });
+  }, []);
 
   // Keep target language in sync if profile changes
   useEffect(() => {
