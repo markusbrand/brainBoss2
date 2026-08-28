@@ -1,0 +1,6 @@
+{
+  "name": "BrainBoss - Kids Math & Brain Quest",
+  "description": "Multidisciplinary learning and brain quest platform for kids & teens featuring Math, Nature & Science, Geography, Art, and Languages, with an interactive Parents Center (Admin Mode), sample games, and multi-profile tracking.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
