@@ -40,6 +40,7 @@ import { ParentCenterModal } from './components/ParentCenter/ParentCenterModal';
 import { SkinSelectorModal } from './components/Skins/SkinSelectorModal';
 import { getSkinTheme, SkinThemeId } from './utils/skins';
 import { useLanguage } from './context/LanguageContext';
+import { BookOpen, Trophy, Gift, Shield, ShoppingBag } from 'lucide-react';
 
 export default function App() {
   const { t, language } = useLanguage();
@@ -319,7 +320,7 @@ export default function App() {
       />
 
       {/* Main Container Viewport */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 pt-5 pb-8 relative z-10">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 pt-3 sm:pt-5 pb-20 md:pb-8 relative z-10">
         {/* Active Game Views */}
         {activeGameMode === 'math_quest' ||
         activeGameMode === 'nature_quest' ||
@@ -394,6 +395,80 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Mobile Bottom Navigation Bar (Hidden when actively playing a game) */}
+      {!activeGameMode && (
+        <nav
+          id="mobile-bottom-nav"
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 px-3 py-2 flex items-center justify-around shadow-[0_-5px_20px_rgba(0,0,0,0.5)]"
+        >
+          <button
+            onClick={() => {
+              soundFx.playPop();
+              setActiveTab('math');
+            }}
+            className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'math'
+                ? 'text-cyan-400 font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <BookOpen className="w-5 h-5" />
+            <span className="text-[10px]">Lernen</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFx.playPop();
+              setShowDailyQuestsModal(true);
+            }}
+            className="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-slate-400 hover:text-slate-200 transition-all cursor-pointer relative"
+          >
+            <Gift className="w-5 h-5 text-pink-400" />
+            <span className="text-[10px]">Quests</span>
+            {profile.dailyQuests.some((q) => q.completed && !q.claimed) && (
+              <span className="absolute top-0 right-2 w-2 h-2 rounded-full bg-pink-500" />
+            )}
+          </button>
+
+          <button
+            onClick={() => {
+              soundFx.playPop();
+              setShowShopModal(true);
+            }}
+            className="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+          >
+            <ShoppingBag className="w-5 h-5 text-indigo-400" />
+            <span className="text-[10px]">Shop</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFx.playPop();
+              setActiveTab('achievements');
+            }}
+            className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'achievements'
+                ? 'text-amber-400 font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Trophy className="w-5 h-5 text-amber-400" />
+            <span className="text-[10px]">Erfolge</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFx.playPop();
+              setShowParentCenterModal(true);
+            }}
+            className="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
+          >
+            <Shield className="w-5 h-5 text-emerald-400" />
+            <span className="text-[10px]">Eltern</span>
+          </button>
+        </nav>
+      )}
 
       {/* Mission Controller Intel Footer */}
       <footer className="h-14 bg-slate-950/90 border-t border-slate-800/80 px-4 sm:px-8 flex items-center justify-between text-[11px] text-slate-400 font-mono uppercase tracking-[0.2em] relative z-10">

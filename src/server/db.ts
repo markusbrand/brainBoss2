@@ -17,7 +17,10 @@ let isInitialized = false;
 export function getPgPool(): pg.Pool | null {
   if (pool) return pool;
 
-  const connectionString = process.env.DATABASE_URL;
+  let connectionString = process.env.DATABASE_URL;
+  if (connectionString && connectionString.startsWith('postgres://')) {
+    connectionString = connectionString.replace('postgres://', 'postgresql://');
+  }
   const host = process.env.POSTGRES_HOST;
   const user = process.env.POSTGRES_USER;
   const password = process.env.POSTGRES_PASSWORD;

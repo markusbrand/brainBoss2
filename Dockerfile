@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Install build dependencies
 COPY package.json package-lock.json* bun.lock* ./
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # Copy source files
 COPY . .
@@ -31,7 +31,7 @@ RUN apk add --no-cache curl tzdata
 
 # Install production dependencies only
 COPY package.json package-lock.json* bun.lock* ./
-RUN npm ci --only=production && npm cache clean --force
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi && npm cache clean --force
 
 # Copy built distribution from builder stage
 COPY --from=builder /app/dist ./dist

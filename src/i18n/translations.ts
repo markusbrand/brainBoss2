@@ -28,6 +28,19 @@ export const translations = {
       switchKid: 'Kind wechseln',
       parentAdmin: 'Elternbereich',
       activeKid: 'Aktiver Lerner',
+      menu: 'Menü & Einstellungen',
+      close: 'Schließen',
+      moreOptions: 'Weitere Optionen',
+    },
+
+    hubTabs: {
+      subjects: 'Schulfächer & Quests',
+      brainLabs: 'Denk- & Reflexspiele',
+      quickStart: 'Schnellstart',
+      changeTopic: 'Thema anpassen',
+      allTopics: 'Alle Themen gemischt',
+      activeMission: 'Aktive Mission',
+      chooseMode: 'Spielmodus wählen',
     },
 
     // Subjects
@@ -531,6 +544,19 @@ export const translations = {
       switchKid: 'Switch Learner',
       parentAdmin: 'Parents Center',
       activeKid: 'Active Learner',
+      menu: 'Menu & Settings',
+      close: 'Close',
+      moreOptions: 'More Options',
+    },
+
+    hubTabs: {
+      subjects: 'School Subjects & Quests',
+      brainLabs: 'Brain & Reflex Labs',
+      quickStart: 'Quick Start',
+      changeTopic: 'Change Topic',
+      allTopics: 'All Topics Mixed',
+      activeMission: 'Active Mission',
+      chooseMode: 'Choose Game Mode',
     },
 
     // Subjects

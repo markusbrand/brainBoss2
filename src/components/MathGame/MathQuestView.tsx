@@ -11,9 +11,9 @@ import {
   Volume2,
   Globe,
   Sparkles,
-  Palette,
-  Leaf,
-  Layers,
+  ChevronRight,
+  Zap,
+  RotateCcw,
 } from 'lucide-react';
 import {
   GameMode,
@@ -52,6 +52,8 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
   const isGerman = language === 'de';
   const isPrimary = profile.gradeLevel === 'primary';
 
+  // High-level hub mode: 'subjects' (Schulfächer) vs 'brain_labs' (Denk- & Reflexspiele)
+  const [hubMode, setHubMode] = useState<'subjects' | 'brain_labs'>('subjects');
   const [currentSubject, setCurrentSubject] = useState<SubjectArea>(initialSubject);
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
   const [targetLanguage, setTargetLanguage] = useState<TargetLearnLanguage>(
@@ -152,45 +154,50 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
       name: t.subjects.math,
       desc: t.subjects.mathDesc,
       icon: '🔢',
-      color: 'from-blue-600 to-indigo-600',
+      bgGradient: 'from-blue-600/30 via-indigo-600/20 to-slate-900',
       border: 'border-blue-500/40',
       accent: 'text-cyan-300',
+      tagColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
       mode: 'math_quest' as GameMode,
     },
     nature: {
       name: t.subjects.nature,
       desc: t.subjects.natureDesc,
       icon: '🌿',
-      color: 'from-emerald-600 to-teal-600',
+      bgGradient: 'from-emerald-600/30 via-teal-600/20 to-slate-900',
       border: 'border-emerald-500/40',
       accent: 'text-emerald-300',
+      tagColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
       mode: 'nature_quest' as GameMode,
     },
     geography: {
       name: t.subjects.geography,
       desc: t.subjects.geographyDesc,
       icon: '🌍',
-      color: 'from-cyan-600 to-blue-600',
+      bgGradient: 'from-cyan-600/30 via-sky-600/20 to-slate-900',
       border: 'border-cyan-500/40',
       accent: 'text-cyan-300',
+      tagColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
       mode: 'geo_quest' as GameMode,
     },
     art: {
       name: t.subjects.art,
       desc: t.subjects.artDesc,
       icon: '🎨',
-      color: 'from-fuchsia-600 to-pink-600',
+      bgGradient: 'from-fuchsia-600/30 via-pink-600/20 to-slate-900',
       border: 'border-pink-500/40',
       accent: 'text-pink-300',
+      tagColor: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
       mode: 'art_quest' as GameMode,
     },
     languages: {
       name: t.subjects.languages,
       desc: t.subjects.languagesDesc,
       icon: '🗣️',
-      color: 'from-violet-600 to-purple-600',
+      bgGradient: 'from-violet-600/30 via-purple-600/20 to-slate-900',
       border: 'border-violet-500/40',
       accent: 'text-violet-300',
+      tagColor: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
       mode: 'language_quest' as GameMode,
     },
   }[currentSubject];
@@ -200,442 +207,483 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
     onStartGame(subjectMeta.mode, selectedTopic, currentSubject, targetLanguage);
   };
 
-  return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      {/* 5 Disciplines Master Switcher Bar */}
-      <div className="bg-slate-900/90 border border-slate-800 p-2 rounded-2xl shadow-xl flex items-center gap-1.5 sm:gap-2 overflow-x-auto">
-        {(['math', 'nature', 'geography', 'art', 'languages'] as SubjectArea[]).map((subj) => {
-          const isSelected = currentSubject === subj;
-          const icon = subj === 'math' ? '🔢' : subj === 'nature' ? '🌿' : subj === 'geography' ? '🌍' : subj === 'art' ? '🎨' : '🗣️';
-          const name = t.subjects[subj];
+  const selectedTopicName = currentTopicList.find((t) => t.id === selectedTopic)?.name || t.topics.all;
 
-          return (
-            <button
-              key={subj}
-              id={`subject-tab-${subj}`}
-              onClick={() => handleSubjectChange(subj)}
-              className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
-                isSelected
-                  ? 'bg-linear-to-r from-indigo-600 to-blue-600 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] scale-102 border border-indigo-400/50'
-                  : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-slate-800/80'
-              }`}
-            >
-              <span className="text-base">{icon}</span>
-              <span>{name}</span>
-            </button>
-          );
-        })}
+  return (
+    <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-200">
+      {/* Top Segmented Navigation Switcher: Schulfächer vs. Denkspiele */}
+      <div className="flex items-center justify-center p-1 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-lg max-w-md mx-auto">
+        <button
+          id="hub-tab-subjects"
+          onClick={() => {
+            soundFx.playPop();
+            setHubMode('subjects');
+          }}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+            hubMode === 'subjects'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <BookOpen className="w-4 h-4 text-cyan-300" />
+          <span>{t.hubTabs.subjects}</span>
+        </button>
+        <button
+          id="hub-tab-brain-labs"
+          onClick={() => {
+            soundFx.playPop();
+            setHubMode('brain_labs');
+          }}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+            hubMode === 'brain_labs'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Brain className="w-4 h-4 text-pink-400" />
+          <span>{t.hubTabs.brainLabs}</span>
+        </button>
       </div>
 
-      {/* Language Learning Bar (when Languages subject is active) */}
-      {currentSubject === 'languages' && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-linear-to-r from-violet-950/80 via-slate-900 to-indigo-950/80 border border-violet-500/40 shadow-[0_0_30px_rgba(139,92,246,0.15)] space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Globe className="w-4 h-4 text-violet-400" />
-                <span>{t.languagesLearning.title}</span>
-              </h3>
-              <p className="text-xs text-slate-300">{t.languagesLearning.subtitle}</p>
+      {hubMode === 'subjects' ? (
+        /* ==================== SCHULFÄCHER & QUESTS ==================== */
+        <div className="space-y-4 sm:space-y-6">
+          {/* 5 Subjects Pill Bar */}
+          <div className="bg-slate-900/80 border border-slate-800/90 p-1.5 rounded-2xl shadow-md flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {(['math', 'nature', 'geography', 'art', 'languages'] as SubjectArea[]).map((subj) => {
+              const isSelected = currentSubject === subj;
+              const icon =
+                subj === 'math'
+                  ? '🔢'
+                  : subj === 'nature'
+                  ? '🌿'
+                  : subj === 'geography'
+                  ? '🌍'
+                  : subj === 'art'
+                  ? '🎨'
+                  : '🗣️';
+              const name = t.subjects[subj];
+
+              return (
+                <button
+                  key={subj}
+                  id={`subject-tab-${subj}`}
+                  onClick={() => handleSubjectChange(subj)}
+                  className={`flex-1 min-w-[95px] sm:min-w-[120px] flex items-center justify-center gap-1.5 sm:gap-2 py-2 sm:py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                    isSelected
+                      ? 'bg-linear-to-r from-indigo-600 to-blue-600 text-white shadow-md scale-102 border border-indigo-400/50'
+                      : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-slate-800/80'
+                  }`}
+                >
+                  <span className="text-base sm:text-lg">{icon}</span>
+                  <span className="truncate">{name}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Language Learning Bar (Only shown when Languages subject is active) */}
+          {currentSubject === 'languages' && (
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-linear-to-r from-violet-950/70 via-slate-900 to-indigo-950/70 border border-violet-500/40 shadow-md space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-violet-400" />
+                  <span className="text-xs font-bold text-white">
+                    {t.languagesLearning.targetLanguagePrompt}
+                  </span>
+                </div>
+                <button
+                  onClick={() => speakWord('Hello, welcome to BrainBoss!', getLangLocale(targetLanguage))}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold border border-slate-700 cursor-pointer"
+                  title="Audio Test"
+                >
+                  <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{t.languagesLearning.audioPronounce}</span>
+                </button>
+              </div>
+
+              {/* Target Language Chips */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {(['en', 'fr', 'it', 'es', 'de'] as TargetLearnLanguage[])
+                  .filter((lang) => lang !== language)
+                  .map((lang) => {
+                    const isSelected = targetLanguage === lang;
+                    const flag = getLanguageFlag(lang);
+                    const name = getLanguageDisplayName(lang, language);
+                    return (
+                      <button
+                        key={lang}
+                        onClick={() => handleTargetLanguageChange(lang)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                          isSelected
+                            ? 'bg-violet-600 border-violet-400 text-white shadow-sm scale-102'
+                            : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        <span>{flag}</span>
+                        <span>{name}</span>
+                      </button>
+                    );
+                  })}
+              </div>
             </div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-900/60 border border-violet-700 text-violet-200 text-xs font-mono">
-              <span>{t.languagesLearning.motherTongueNote}</span>
-              <span className="font-bold">{language === 'de' ? '🇩🇪 Deutsch' : '🇬🇧 English'}</span>
+          )}
+
+          {/* Clean Quick Start & Focus Hero Card */}
+          <div className={`relative overflow-hidden rounded-3xl bg-linear-to-br ${subjectMeta.bgGradient} border ${subjectMeta.border} p-5 sm:p-7 text-white shadow-xl`}>
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+              <div className="space-y-3 max-w-xl">
+                {/* Active Subject & Grade Badge */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold uppercase ${subjectMeta.tagColor} border`}>
+                    <span>{subjectMeta.icon}</span>
+                    <span>{subjectMeta.name}</span>
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono">
+                    {profile.schoolGrade ? `${profile.schoolGrade}. Schulstufe` : (isPrimary ? 'Grundstufe (1-4)' : 'Mittelschule (5-8)')}
+                  </span>
+                </div>
+
+                {/* Main Headline */}
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-white leading-tight">
+                  {subjectMeta.desc}
+                </h2>
+
+                {/* Topic Selector Bar */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold">
+                    <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Fokus-Thema:</span>
+                    <span className="text-cyan-300 font-bold">{selectedTopicName}</span>
+                  </div>
+
+                  {/* Horizontal Scrollable Topic Chips */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                    {currentTopicList.map((item) => {
+                      const isSelected = selectedTopic === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          id={`topic-chip-${item.id}`}
+                          onClick={() => {
+                            soundFx.playPop();
+                            setSelectedTopic(item.id);
+                          }}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-600 border-indigo-400 text-white shadow-sm'
+                              : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <span>{item.icon}</span>
+                          <span>{item.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Primary Launch Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2.5 pt-2">
+                  <button
+                    id="hero-play-quest-btn"
+                    onClick={handleLaunchHeroGame}
+                    className="flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-linear-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-sm sm:text-base shadow-lg hover:scale-103 active:scale-97 transition-all cursor-pointer"
+                  >
+                    <Play className="w-4 h-4 fill-white text-white" />
+                    <span>{t.questView.launchQuest}</span>
+                  </button>
+
+                  <button
+                    id="hero-play-ai-story-btn"
+                    onClick={() => {
+                      soundFx.playPop();
+                      onOpenAiStory();
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 sm:py-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/50 text-cyan-300 font-bold text-xs sm:text-sm shadow-md transition-all hover:scale-103 cursor-pointer"
+                  >
+                    <Bot className="w-4 h-4 text-cyan-400" />
+                    <span>{t.questView.aiStoryQuest}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Compact Mascot Companion */}
+              <div className="bg-slate-950/60 border border-slate-800/80 backdrop-blur-sm rounded-2xl p-3 sm:p-4 shadow-xl flex flex-col items-center shrink-0 self-center md:self-auto">
+                <MascotBot
+                  mood="cheering"
+                  speechText={
+                    isPrimary
+                      ? t.questView.mascotPrimary(profile.level)
+                      : t.questView.mascotHighSchool(profile.level)
+                  }
+                />
+              </div>
             </div>
           </div>
 
-          {/* Target Language Chips */}
-          <div className="flex items-center gap-2 flex-wrap pt-1">
-            <span className="text-xs font-semibold text-slate-400 font-mono">
-              {t.languagesLearning.targetLanguagePrompt}
-            </span>
-            {(['en', 'fr', 'it', 'es', 'de'] as TargetLearnLanguage[])
-              .filter((lang) => lang !== language)
-              .map((lang) => {
-                const isSelected = targetLanguage === lang;
-                const flag = getLanguageFlag(lang);
-                const name = getLanguageDisplayName(lang, language);
-                return (
-                  <button
-                    key={lang}
-                    onClick={() => handleTargetLanguageChange(lang)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                      isSelected
-                        ? 'bg-violet-600 border-violet-400 text-white shadow-[0_0_15px_rgba(139,92,246,0.5)] scale-105'
-                        : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
-                    }`}
-                  >
-                    <span>{flag}</span>
-                    <span>{name}</span>
-                  </button>
-                );
-              })}
+          {/* Game Modes Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <Target className="w-4 h-4 text-indigo-400" />
+                <span>{t.hubTabs.chooseMode}</span>
+              </h3>
+            </div>
 
-            <button
-              onClick={() => speakWord('Hello, welcome to BrainBoss!', getLangLocale(targetLanguage))}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold border border-slate-700 ml-auto cursor-pointer"
-              title="Test Web Speech Audio"
-            >
-              <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{t.languagesLearning.audioPronounce}</span>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              {/* Mode 1: Core Subject Quest */}
+              <div
+                id="mode-card-subject-quest"
+                onClick={handleLaunchHeroGame}
+                className="group relative bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-800 hover:border-blue-500/60 shadow-lg hover:shadow-indigo-500/10 transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                      {subjectMeta.icon}
+                    </div>
+                    <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      {isGerman ? 'Adaptiv' : 'Adaptive'}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-white text-base group-hover:text-cyan-300 transition-colors">
+                    {currentSubject === 'math'
+                      ? t.questView.modeMathQuestTitle
+                      : currentSubject === 'nature'
+                      ? t.questView.modeNatureQuestTitle
+                      : currentSubject === 'geography'
+                      ? t.questView.modeGeoQuestTitle
+                      : currentSubject === 'art'
+                      ? t.questView.modeArtQuestTitle
+                      : t.questView.modeLanguageQuestTitle}
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
+                    {currentSubject === 'math'
+                      ? t.questView.modeMathQuestDesc
+                      : currentSubject === 'nature'
+                      ? t.questView.modeNatureQuestDesc
+                      : currentSubject === 'geography'
+                      ? t.questView.modeGeoQuestDesc
+                      : currentSubject === 'art'
+                      ? t.questView.modeArtQuestDesc
+                      : t.questView.modeLanguageQuestDesc}
+                  </p>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between text-xs font-bold text-cyan-400">
+                  <span>{t.questView.playNow}</span>
+                  <Play className="w-3.5 h-3.5 fill-cyan-400 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              {/* Mode 2: 60s Speed Sprint / Vocab Blitz */}
+              <div
+                id="mode-card-speed-sprint"
+                onClick={() => {
+                  soundFx.playPop();
+                  onStartGame(
+                    currentSubject === 'languages' ? 'vocab_sprint' : 'speed_sprint',
+                    selectedTopic,
+                    currentSubject,
+                    targetLanguage
+                  );
+                }}
+                className="group relative bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-800 hover:border-amber-500/60 shadow-lg hover:shadow-amber-500/10 transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                      ⚡
+                    </div>
+                    <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                      <Clock className="w-2.5 h-2.5" /> 60s
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-white text-base group-hover:text-amber-300 transition-colors">
+                    {currentSubject === 'languages'
+                      ? t.questView.modeVocabSprintTitle
+                      : t.questView.modeSpeedSprintTitle}
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
+                    {currentSubject === 'languages'
+                      ? t.questView.modeVocabSprintDesc
+                      : t.questView.modeSpeedSprintDesc}
+                  </p>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between text-xs font-bold text-amber-400">
+                  <span>High: {profile.highScores.speed_sprint || 0} pts</span>
+                  <Play className="w-3.5 h-3.5 fill-amber-400 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              {/* Mode 3: Survival 3-Hearts */}
+              <div
+                id="mode-card-survival"
+                onClick={() => {
+                  soundFx.playPop();
+                  onStartGame('survival_hearts', selectedTopic, currentSubject, targetLanguage);
+                }}
+                className="group relative bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-800 hover:border-rose-500/60 shadow-lg hover:shadow-rose-500/10 transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                      ❤️
+                    </div>
+                    <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                      3 ❤️
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-white text-base group-hover:text-rose-300 transition-colors">
+                    {t.questView.modeSurvivalHeartsTitle}
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
+                    {t.questView.modeSurvivalHeartsDesc}
+                  </p>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between text-xs font-bold text-rose-400">
+                  <span>{t.questView.startChallenge}</span>
+                  <Play className="w-3.5 h-3.5 fill-rose-400 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+
+              {/* Mode 4: Boss Battle */}
+              <div
+                id="mode-card-boss-battle"
+                onClick={() => {
+                  soundFx.playPop();
+                  onStartGame('boss_battle', selectedTopic, currentSubject, targetLanguage);
+                }}
+                className="group relative bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-800 hover:border-purple-500/60 shadow-lg hover:shadow-purple-500/10 transition-all cursor-pointer flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                      👑
+                    </div>
+                    <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-1">
+                      <Flame className="w-2.5 h-2.5 text-purple-400" /> 5 {isGerman ? 'Phasen' : 'Phases'}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-white text-base group-hover:text-purple-300 transition-colors">
+                    {t.questView.modeBossBattleTitle}
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
+                    {t.questView.modeBossBattleDesc}
+                  </p>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between text-xs font-bold text-purple-400">
+                  <span>{t.questView.duelBoss}</span>
+                  <Play className="w-3.5 h-3.5 fill-purple-400 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ==================== DENK- & REFLEXSPIELE (BRAIN LABS) ==================== */
+        <div className="space-y-4 sm:space-y-6">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Brain className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-lg sm:text-xl font-bold text-white">
+                  {t.questView.brainReflexLabs}
+                </h3>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                {isGerman
+                  ? 'Trainiere Kognition, Fokus, Reaktionszeit und das visuelle Arbeitsgedächtnis'
+                  : 'Cognitive reflex, focus, speed, and working memory training modules'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+              {/* Classic Color & Number Rush */}
+              <div
+                id="brain-game-classic"
+                onClick={() => {
+                  soundFx.playPop();
+                  onStartGame('classic_color_number');
+                }}
+                className="group bg-slate-950/70 hover:bg-slate-800/70 border border-slate-800 hover:border-pink-500/60 rounded-2xl p-5 transition-all cursor-pointer flex flex-col justify-between shadow-md"
+              >
+                <div className="space-y-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-pink-500/10 border border-pink-500/30 text-pink-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                    🎯
+                  </div>
+                  <h4 className="font-bold text-white text-base group-hover:text-pink-400 transition-colors">
+                    {t.questView.modeClassicReflexTitle}
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {t.questView.modeClassicReflexDesc}
+                  </p>
+                </div>
+                <div className="pt-4 flex items-center justify-between text-xs text-pink-400 font-mono font-bold border-t border-slate-800/80 mt-3">
+                  <span>High: {profile.highScores.classic_color_number || 0} pts</span>
+                  <span>{t.questView.playNow} &rarr;</span>
+                </div>
+              </div>
+
+              {/* Memory Matrix */}
+              <div
+                id="brain-game-memory"
+                onClick={() => {
+                  soundFx.playPop();
+                  onStartGame('memory_matrix');
+                }}
+                className="group bg-slate-950/70 hover:bg-slate-800/70 border border-slate-800 hover:border-cyan-500/60 rounded-2xl p-5 transition-all cursor-pointer flex flex-col justify-between shadow-md"
+              >
+                <div className="space-y-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                    🧩
+                  </div>
+                  <h4 className="font-bold text-white text-base group-hover:text-cyan-400 transition-colors">
+                    {t.questView.modeMemoryMatrixTitle}
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {t.questView.modeMemoryMatrixDesc}
+                  </p>
+                </div>
+                <div className="pt-4 flex items-center justify-between text-xs text-cyan-400 font-mono font-bold border-t border-slate-800/80 mt-3">
+                  <span>Level {profile.highScores.memory_matrix || 1}</span>
+                  <span>{t.questView.testMemory} &rarr;</span>
+                </div>
+              </div>
+
+              {/* Speed Stroop Reflex */}
+              <div
+                id="brain-game-stroop"
+                onClick={() => {
+                  soundFx.playPop();
+                  onStartGame('speed_stroop');
+                }}
+                className="group bg-slate-950/70 hover:bg-slate-800/70 border border-slate-800 hover:border-emerald-500/60 rounded-2xl p-5 transition-all cursor-pointer flex flex-col justify-between shadow-md"
+              >
+                <div className="space-y-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                    ⚡
+                  </div>
+                  <h4 className="font-bold text-white text-base group-hover:text-emerald-400 transition-colors">
+                    {t.questView.modeSpeedStroopTitle}
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {t.questView.modeSpeedStroopDesc}
+                  </p>
+                </div>
+                <div className="pt-4 flex items-center justify-between text-xs text-emerald-400 font-mono font-bold border-t border-slate-800/80 mt-3">
+                  <span>High: {profile.highScores.speed_stroop || 0} pts</span>
+                  <span>{t.questView.enterLab} &rarr;</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
-
-      {/* Hero Quest Mission Banner with Immersive Glow & Accents */}
-      <div className={`relative overflow-hidden rounded-3xl bg-linear-to-br from-slate-900 via-slate-950 to-slate-900 border ${subjectMeta.border} p-6 sm:p-8 text-white shadow-[0_0_40px_rgba(99,102,241,0.15)]`}>
-        {/* Top Glowing Laser Accent Bar */}
-        <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-cyan-400 to-transparent" />
-
-        {/* Ambient Glow Orbs */}
-        <div className="absolute -right-12 -bottom-12 w-64 h-64 rounded-full bg-blue-600/15 blur-3xl pointer-events-none" />
-        <div className="absolute left-1/3 -top-12 w-48 h-48 rounded-full bg-indigo-400/15 blur-2xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="max-w-xl space-y-3.5">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-mono font-bold tracking-widest uppercase">
-              <Compass className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{subjectMeta.name}</span>
-            </div>
-            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight text-white">
-              {isPrimary ? t.questView.heroPrimaryTitle : t.questView.heroHighSchoolTitle}
-            </h1>
-            <p className="text-slate-300 text-xs sm:text-sm leading-relaxed max-w-lg">
-              {subjectMeta.desc}
-            </p>
-
-            {/* Quick Launch Action Buttons */}
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <button
-                id="hero-play-quest-btn"
-                onClick={handleLaunchHeroGame}
-                className="flex items-center gap-2.5 px-6 py-3 rounded-xl bg-linear-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-sm sm:text-base shadow-[0_0_25px_rgba(99,102,241,0.4)] hover:scale-105 active:scale-95 transition-all cursor-pointer"
-              >
-                <Play className="w-4 h-4 fill-white text-white" />
-                <span>{t.questView.launchQuest}</span>
-              </button>
-
-              <button
-                id="hero-play-ai-story-btn"
-                onClick={() => {
-                  soundFx.playPop();
-                  onOpenAiStory();
-                }}
-                className="flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700/80 hover:border-cyan-500/50 text-cyan-300 font-bold text-sm shadow-md transition-all hover:scale-105 cursor-pointer"
-              >
-                <Bot className="w-4 h-4 text-cyan-400" />
-                <span>{t.questView.aiStoryQuest}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Companion Mascot Display in Immersive Capsule */}
-          <div className="bg-slate-950/70 border border-slate-800/80 backdrop-blur-md rounded-2xl p-4 sm:p-5 shadow-2xl flex flex-col items-center">
-            <MascotBot
-              mood="cheering"
-              speechText={
-                isPrimary
-                  ? t.questView.mascotPrimary(profile.level)
-                  : t.questView.mascotHighSchool(profile.level)
-              }
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Topic Filter Chips */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-cyan-400" />
-            <span>{t.questView.selectFocus} ({subjectMeta.name})</span>
-          </h2>
-          <span className="text-[11px] font-mono text-slate-500">
-            {currentTopicList.length - 1} {t.questView.modulesOnline}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
-          {currentTopicList.map((item) => {
-            const isSelected = selectedTopic === item.id;
-            return (
-              <button
-                key={item.id}
-                id={`topic-chip-${item.id}`}
-                onClick={() => {
-                  soundFx.playPop();
-                  setSelectedTopic(item.id);
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
-                  isSelected
-                    ? 'bg-indigo-600/30 border-indigo-500 text-cyan-300 shadow-[0_0_15px_rgba(99,102,241,0.3)] scale-105'
-                    : 'bg-slate-900/80 text-slate-400 hover:text-slate-200 border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                <span>{item.icon}</span>
-                <span>{item.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Game Quest Modes Grid */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-          <Target className="w-4 h-4 text-indigo-400" />
-          <span>{t.questView.missionOperations}</span>
-        </h2>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Mode 1: Core Subject Quest */}
-          <div
-            id="mode-card-subject-quest"
-            onClick={handleLaunchHeroGame}
-            className="group relative bg-slate-900/80 rounded-2xl p-5 border border-slate-800 hover:border-blue-500/60 shadow-xl hover:shadow-[0_0_25px_rgba(59,130,246,0.2)] transition-all cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-2.5">
-              <div className="w-11 h-11 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center font-bold text-2xl group-hover:scale-110 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner">
-                {subjectMeta.icon}
-              </div>
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-base group-hover:text-cyan-300 transition-colors">
-                  {currentSubject === 'math'
-                    ? t.questView.modeMathQuestTitle
-                    : currentSubject === 'nature'
-                    ? t.questView.modeNatureQuestTitle
-                    : currentSubject === 'geography'
-                    ? t.questView.modeGeoQuestTitle
-                    : currentSubject === 'art'
-                    ? t.questView.modeArtQuestTitle
-                    : t.questView.modeLanguageQuestTitle}
-                </h3>
-                <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  {isGerman ? 'Adaptiv' : 'Adaptive'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                {currentSubject === 'math'
-                  ? t.questView.modeMathQuestDesc
-                  : currentSubject === 'nature'
-                  ? t.questView.modeNatureQuestDesc
-                  : currentSubject === 'geography'
-                  ? t.questView.modeGeoQuestDesc
-                  : currentSubject === 'art'
-                  ? t.questView.modeArtQuestDesc
-                  : t.questView.modeLanguageQuestDesc}
-              </p>
-            </div>
-
-            <div className="pt-4 flex items-center justify-between text-xs font-bold text-cyan-400">
-              <span>{t.questView.playNow}</span>
-              <Play className="w-3.5 h-3.5 fill-cyan-400 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Mode 2: 60s Speed Sprint / Vocab Blitz */}
-          <div
-            id="mode-card-speed-sprint"
-            onClick={() => {
-              soundFx.playPop();
-              onStartGame(
-                currentSubject === 'languages' ? 'vocab_sprint' : 'speed_sprint',
-                selectedTopic,
-                currentSubject,
-                targetLanguage
-              );
-            }}
-            className="group relative bg-slate-900/80 rounded-2xl p-5 border border-slate-800 hover:border-amber-500/60 shadow-xl hover:shadow-[0_0_25px_rgba(245,158,11,0.2)] transition-all cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-2.5">
-              <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold text-2xl group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white transition-all shadow-inner">
-                ⚡
-              </div>
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-base group-hover:text-amber-300 transition-colors">
-                  {currentSubject === 'languages'
-                    ? t.questView.modeVocabSprintTitle
-                    : t.questView.modeSpeedSprintTitle}
-                </h3>
-                <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5" /> 60s
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                {currentSubject === 'languages'
-                  ? t.questView.modeVocabSprintDesc
-                  : t.questView.modeSpeedSprintDesc}
-              </p>
-            </div>
-
-            <div className="pt-4 flex items-center justify-between text-xs font-bold text-amber-400">
-              <span>{t.questView.bestSprintScore}: {profile.highScores.speed_sprint || 0} pts</span>
-              <Play className="w-3.5 h-3.5 fill-amber-400 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Mode 3: Survival 3-Hearts */}
-          <div
-            id="mode-card-survival"
-            onClick={() => {
-              soundFx.playPop();
-              onStartGame('survival_hearts', selectedTopic, currentSubject, targetLanguage);
-            }}
-            className="group relative bg-slate-900/80 rounded-2xl p-5 border border-slate-800 hover:border-rose-500/60 shadow-xl hover:shadow-[0_0_25px_rgba(244,63,94,0.2)] transition-all cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-2.5">
-              <div className="w-11 h-11 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center font-bold text-2xl group-hover:scale-110 group-hover:bg-rose-500 group-hover:text-white transition-all shadow-inner">
-                ❤️
-              </div>
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-base group-hover:text-rose-300 transition-colors">
-                  {t.questView.modeSurvivalHeartsTitle}
-                </h3>
-                <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                  3 ❤️
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                {t.questView.modeSurvivalHeartsDesc}
-              </p>
-            </div>
-
-            <div className="pt-4 flex items-center justify-between text-xs font-bold text-rose-400">
-              <span>{t.questView.startChallenge}</span>
-              <Play className="w-3.5 h-3.5 fill-rose-400 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Mode 4: Boss Battle */}
-          <div
-            id="mode-card-boss-battle"
-            onClick={() => {
-              soundFx.playPop();
-              onStartGame('boss_battle', selectedTopic, currentSubject, targetLanguage);
-            }}
-            className="group relative bg-slate-900/80 rounded-2xl p-5 border border-slate-800 hover:border-purple-500/60 shadow-xl hover:shadow-[0_0_25px_rgba(168,85,247,0.2)] transition-all cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-2.5">
-              <div className="w-11 h-11 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center font-bold text-2xl group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white transition-all shadow-inner">
-                👑
-              </div>
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-base group-hover:text-purple-300 transition-colors">
-                  {t.questView.modeBossBattleTitle}
-                </h3>
-                <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-1">
-                  <Flame className="w-2.5 h-2.5 text-purple-400" /> 5 {isGerman ? 'Phasen' : 'Phases'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                {t.questView.modeBossBattleDesc}
-              </p>
-            </div>
-
-            <div className="pt-4 flex items-center justify-between text-xs font-bold text-purple-400">
-              <span>{t.questView.duelBoss}</span>
-              <Play className="w-3.5 h-3.5 fill-purple-400 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Classic BrainBoss Cognitive Reflex Games */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-2">
-              <Brain className="w-5 h-5 text-cyan-400" />
-              <h2 className="text-lg sm:text-xl font-bold text-white">
-                {t.questView.brainReflexLabs}
-              </h2>
-            </div>
-            <p className="text-xs text-slate-400">
-              {isGerman
-                ? 'Trainiere Kognition, Fokus, Reaktionszeit und das Arbeitsgedächtnis'
-                : 'Cognitive reflex, focus, speed, and working memory training modules'}
-            </p>
-          </div>
-          <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-3 py-1 rounded-xl self-start sm:self-auto">
-            {isGerman ? 'NEURO-STIMULATION AKTIV' : 'NEURO-STIMULATION ACTIVE'}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-          {/* Classic Color & Number Rush */}
-          <div
-            id="brain-game-classic"
-            onClick={() => {
-              soundFx.playPop();
-              onStartGame('classic_color_number');
-            }}
-            className="group bg-slate-950/60 hover:bg-slate-800/60 border border-slate-800 hover:border-pink-500/60 rounded-2xl p-4 transition-all cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-2">
-              <div className="text-2xl">🎯</div>
-              <h4 className="font-bold text-white group-hover:text-pink-400 transition-colors">
-                {t.questView.modeClassicReflexTitle}
-              </h4>
-              <p className="text-xs text-slate-400">
-                {t.questView.modeClassicReflexDesc}
-              </p>
-            </div>
-            <div className="pt-3 flex items-center justify-between text-xs text-pink-400 font-mono font-bold">
-              <span>High: {profile.highScores.classic_color_number || 0}</span>
-              <span>{t.questView.playNow} &rarr;</span>
-            </div>
-          </div>
-
-          {/* Memory Matrix */}
-          <div
-            id="brain-game-memory"
-            onClick={() => {
-              soundFx.playPop();
-              onStartGame('memory_matrix');
-            }}
-            className="group bg-slate-950/60 hover:bg-slate-800/60 border border-slate-800 hover:border-cyan-500/60 rounded-2xl p-4 transition-all cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-2">
-              <div className="text-2xl">🧩</div>
-              <h4 className="font-bold text-white group-hover:text-cyan-400 transition-colors">
-                {t.questView.modeMemoryMatrixTitle}
-              </h4>
-              <p className="text-xs text-slate-400">
-                {t.questView.modeMemoryMatrixDesc}
-              </p>
-            </div>
-            <div className="pt-3 flex items-center justify-between text-xs text-cyan-400 font-mono font-bold">
-              <span>{t.nav.level}: {profile.highScores.memory_matrix || 1}</span>
-              <span>{t.questView.testMemory} &rarr;</span>
-            </div>
-          </div>
-
-          {/* Speed Stroop Reflex */}
-          <div
-            id="brain-game-stroop"
-            onClick={() => {
-              soundFx.playPop();
-              onStartGame('speed_stroop');
-            }}
-            className="group bg-slate-950/60 hover:bg-slate-800/60 border border-slate-800 hover:border-emerald-500/60 rounded-2xl p-4 transition-all cursor-pointer flex flex-col justify-between"
-          >
-            <div className="space-y-2">
-              <div className="text-2xl">⚡</div>
-              <h4 className="font-bold text-white group-hover:text-emerald-400 transition-colors">
-                {t.questView.modeSpeedStroopTitle}
-              </h4>
-              <p className="text-xs text-slate-400">
-                {t.questView.modeSpeedStroopDesc}
-              </p>
-            </div>
-            <div className="pt-3 flex items-center justify-between text-xs text-emerald-400 font-mono font-bold">
-              <span>High: {profile.highScores.speed_stroop || 0}</span>
-              <span>{t.questView.enterLab} &rarr;</span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
