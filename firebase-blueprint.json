@@ -1,14 +1,51 @@
 {
   "entities": {
-    "parent_configs": {
-      "title": "Parent Config",
-      "description": "Stores parental configuration, PIN, and kid learning profiles",
+    "users": {
+      "title": "User Profile",
+      "description": "User authentication profile and role definitions (Super Admin, Parent, Child)",
       "type": "object",
       "properties": {
-        "userId": { "type": "string", "description": "Owner user ID (auth or device ID)" },
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "parent", "child"] },
+        "status": { "type": "string", "enum": ["active", "pending", "disabled"] },
+        "parentUid": { "type": "string" },
+        "kidId": { "type": "string" },
+        "assignedKidIds": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "lastLoginAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "authorized_users": {
+      "title": "Authorized Admin / Parent User",
+      "description": "Whitelist of approved parent / admin accounts managed by Super Admin",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "parent", "child"] },
+        "displayName": { "type": "string" },
+        "addedBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    },
+    "parent_configs": {
+      "title": "Parent Config & Family Hub",
+      "description": "Stores parental configuration, PIN, kid learning profiles, assigned tasks, and custom tests",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "description": "Parent UID" },
+        "ownerEmail": { "type": "string", "description": "Parent email" },
         "pin": { "type": "string", "description": "4-digit parent PIN" },
         "activeKidId": { "type": "string", "description": "ID of current active kid profile" },
-        "kids": { "type": "array", "description": "Array of kid profiles with XP, coins, streak, level, stats" },
+        "kids": { "type": "array", "description": "Array of kid profiles with class, school grade, XP, coins, streak, level, stats" },
+        "tasks": { "type": "array", "description": "Assigned homework tasks and objectives for kids" },
+        "tests": { "type": "array", "description": "Curated tests and exams set up by parent" },
+        "testSubmissions": { "type": "array", "description": "Test submissions and grading results" },
         "allowedSubjects": { "type": "array", "description": "Allowed subject areas" },
         "allowedGameModes": { "type": "array", "description": "Allowed game modes" },
         "dailyTimeLimitMinutes": { "type": "number", "description": "Daily screen time limit in minutes" },
@@ -62,14 +99,74 @@
         "sourceBookOrChapter": { "type": "string" }
       },
       "required": ["id", "title", "subject", "schoolGrade"]
+    },
+    "family_shares": {
+      "title": "Family Group & Shared Circle",
+      "description": "Connected family circle containing shared children, co-parents, and permissions",
+      "type": "object",
+      "properties": {
+        "familyId": { "type": "string" },
+        "shareCode": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "members": { "type": "array" },
+        "kids": { "type": "array" },
+        "tasks": { "type": "array" },
+        "tests": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["familyId", "shareCode", "name", "ownerEmail"]
+    },
+    "family_invites": {
+      "title": "Family Share Invite",
+      "description": "Invite token/code allowing another parent or co-parent to join a family circle",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "familyId": { "type": "string" },
+        "familyName": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["code", "familyId", "ownerEmail"]
+    },
+    "child_shares": {
+      "title": "Individual Child Share Invite",
+      "description": "Direct share code for importing or following an individual child profile",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "kidId": { "type": "string" },
+        "kidName": { "type": "string" },
+        "kidAvatar": { "type": "string" },
+        "schoolGrade": { "type": "number" },
+        "familyId": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "fullProfile": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["code", "kidId", "kidName", "ownerEmail"]
     }
   },
   "firestore": {
     "collections": [
       {
+        "path": "users/{userId}",
+        "entity": "users",
+        "description": "User profile collection"
+      },
+      {
+        "path": "authorized_users/{userEmail}",
+        "entity": "authorized_users",
+        "description": "Authorized admin and parent accounts list"
+      },
+      {
         "path": "parent_configs/{configId}",
         "entity": "parent_configs",
-        "description": "Family and parent profile configurations"
+        "description": "Family and parent profile configurations, tasks, and tests"
       },
       {
         "path": "custom_questions/{questionId}",
@@ -80,6 +177,21 @@
         "path": "scanned_batches/{batchId}",
         "entity": "scanned_batches",
         "description": "Schoolbook scan batches"
+      },
+      {
+        "path": "family_shares/{familyId}",
+        "entity": "family_shares",
+        "description": "Family groups and shared children"
+      },
+      {
+        "path": "family_invites/{inviteCode}",
+        "entity": "family_invites",
+        "description": "Invite codes for family joining"
+      },
+      {
+        "path": "child_shares/{shareCode}",
+        "entity": "child_shares",
+        "description": "Individual child share invites"
       }
     ]
   }

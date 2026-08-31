@@ -65,6 +65,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
   // Batches history
   const [batches, setBatches] = useState<ScannedMaterialBatch[]>(() => loadScannedBatches());
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
+  const [batchToDelete, setBatchToDelete] = useState<ScannedMaterialBatch | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -212,19 +213,21 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
   };
 
   // Delete a scanned batch
-  const handleDeleteBatch = (batchId: string) => {
-    if (
-      window.confirm(
-        isDe
-          ? 'Möchtest du diesen Schulbuch-Scan und alle dazugehörigen Aufgaben wirklich löschen?'
-          : 'Do you really want to delete this scan and all its generated questions?'
-      )
-    ) {
-      const { batches: updated } = deleteScannedBatch(batchId);
-      setBatches(updated);
-      if (lastProcessedBatch?.id === batchId) setLastProcessedBatch(null);
-      soundFx.playPop();
-    }
+  const handleRequestDeleteBatch = (batch: ScannedMaterialBatch) => {
+    soundFx.playPop();
+    setBatchToDelete(batch);
+  };
+
+  const handleConfirmDeleteBatch = () => {
+    if (!batchToDelete) return;
+    const batchId = batchToDelete.id;
+    const { batches: updated } = deleteScannedBatch(batchId);
+    setBatches(updated);
+    if (lastProcessedBatch?.id === batchId) setLastProcessedBatch(null);
+    setBatchToDelete(null);
+    soundFx.playPop();
+    setStatusMessage(isDe ? 'Schulbuch-Scan und Aufgaben wurden erfolgreich gelöscht.' : 'Scan and questions deleted successfully.');
+    setTimeout(() => setStatusMessage(null), 4000);
   };
 
   return (
@@ -619,7 +622,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
                       {/* Delete batch button */}
                       <button
                         type="button"
-                        onClick={() => handleDeleteBatch(batch.id)}
+                        onClick={() => handleRequestDeleteBatch(batch)}
                         className="p-2 rounded-xl bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800/50 transition-colors cursor-pointer"
                         title={isDe ? 'Scan & Aufgaben löschen' : 'Delete scan and questions'}
                       >
@@ -690,6 +693,58 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* Batch Deletion Confirmation Modal */}
+      {batchToDelete && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-lg font-bold text-white">
+                  {isDe ? 'Schulbuch-Scan löschen?' : 'Delete Schoolbook Scan?'}
+                </h4>
+                <p className="text-xs text-rose-300/80 font-medium">
+                  {isDe ? 'Alle dazugehörigen generierten Aufgaben werden entfernt' : 'All generated exercises from this scan will be removed'}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
+              <div className="font-bold text-white text-xs">{batchToDelete.bookTitle || (isDe ? 'Unbenannter Scan' : 'Untitled scan')}</div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                {batchToDelete.pageCount || 1} {isDe ? 'Seiten' : 'pages'} • {new Date(batchToDelete.createdAt).toLocaleDateString(isDe ? 'de-DE' : 'en-US')}
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {isDe
+                ? 'Möchtest du diesen Scan und alle daraus erstellten Übungsaufgaben wirklich unwiderruflich löschen?'
+                : 'Do you really want to permanently delete this scan and all its generated exercises?'}
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setBatchToDelete(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteBatch}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/30 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDe ? 'Scan endgültig löschen' : 'Delete Scan'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

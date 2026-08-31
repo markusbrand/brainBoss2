@@ -240,9 +240,12 @@ export interface KidProfile {
   avatar: string;
   gradeLevel: GradeLevel;
   schoolGrade?: number; // 1 to 8 (1. Schulstufe bis 8. Schulstufe)
+  schoolClass?: string; // e.g. "3A", "5B", "Klasse 4"
   targetLanguage: TargetLearnLanguage;
   skinId?: SkinThemeId;
   manualDifficulty?: number; // 1 to 5 (mapped to school year / complexity)
+  loginCode?: string; // e.g. "KID-7492" or easy kid login code
+  pin?: string; // 4-digit kid PIN for tablet/child login
   level: number;
   xp: number;
   xpToNextLevel: number;
@@ -267,15 +270,145 @@ export interface KidProfile {
 
 export type PlayerProfile = KidProfile;
 
+export type UserRole = 'super_admin' | 'parent' | 'child';
+
+export interface FamilyMember {
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  role: 'owner' | 'coparent' | 'tutor';
+  joinedAt: string;
+  lastActiveAt?: string;
+}
+
+export interface FamilyGroup {
+  familyId: string;
+  shareCode: string;
+  name: string;
+  ownerUid: string;
+  ownerEmail: string;
+  members: FamilyMember[];
+  kids: KidProfile[];
+  tasks?: ChildTask[];
+  tests?: ChildTest[];
+  testSubmissions?: TestSubmission[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChildShareInvite {
+  code: string; // e.g. "KID-FELIX-7892"
+  kidId: string;
+  kidName: string;
+  kidAvatar: string;
+  schoolGrade?: number;
+  gradeLevel: GradeLevel;
+  familyId: string;
+  familyName: string;
+  ownerEmail: string;
+  ownerName: string;
+  fullProfile: KidProfile;
+  createdAt: string;
+  expiresAt?: string;
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  role: UserRole;
+  createdAt: string;
+  status: 'active' | 'pending' | 'disabled';
+  parentUid?: string;
+  familyId?: string; // Linked family circle ID
+  kidId?: string; // Bound kid profile if role is 'child'
+  assignedKidIds?: string[]; // Kids managed by this parent
+  createdBy?: string;
+  lastLoginAt?: string;
+}
+
+export interface AuthorizedUser {
+  email: string;
+  role: UserRole;
+  displayName?: string;
+  addedBy: string;
+  createdAt: string;
+  notes?: string;
+}
+
+export interface ChildTask {
+  id: string;
+  title: string;
+  description?: string;
+  subject: SubjectArea;
+  topic?: string;
+  targetCount: number; // e.g. 10 problems
+  currentCount: number;
+  assignedKidId: string; // Kid ID or 'all'
+  dueDate?: string;
+  status: 'assigned' | 'in_progress' | 'completed';
+  rewardXp: number;
+  rewardCoins: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface ChildTest {
+  id: string;
+  title: string;
+  description?: string;
+  subject: SubjectArea;
+  schoolGrade: number; // 1 to 8
+  assignedKidIds: string[];
+  timeLimitMinutes: number; // 0 = unlimited, or e.g. 15 mins
+  dueDate?: string;
+  questions: ProblemItem[];
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface TestSubmission {
+  id: string;
+  testId: string;
+  testTitle: string;
+  kidId: string;
+  kidName: string;
+  subject: SubjectArea;
+  score: number;
+  totalQuestions: number;
+  correctCount: number;
+  accuracy: number;
+  answers: {
+    questionId: string;
+    question: string;
+    selectedAnswer: number | string;
+    correctAnswer: number | string;
+    isCorrect: boolean;
+  }[];
+  completedAt: string;
+  timeSpentSeconds: number;
+  parentFeedback?: string;
+}
+
 export interface ParentConfig {
   pin: string; // 4-digit PIN e.g. "1234"
   activeKidId: string;
   kids: KidProfile[];
+  tasks?: ChildTask[];
+  tests?: ChildTest[];
+  testSubmissions?: TestSubmission[];
   allowedSubjects: SubjectArea[];
   allowedGameModes: GameMode[];
   dailyTimeLimitMinutes: number; // 0 = unlimited
   enforceDailyGoal: boolean;
   allowShopPurchases: boolean;
+  ownerUid?: string;
+  ownerEmail?: string;
+  familyId?: string; // Unique Family Circle ID for multi-parent sharing
+  familyName?: string; // e.g. "Familie Brandstätter"
+  familyShareCode?: string; // Clean join code e.g. "FAM-8492"
+  familyMembers?: FamilyMember[]; // Connected co-parents and tutors
 }
 
 export interface OpenSpecDoc {

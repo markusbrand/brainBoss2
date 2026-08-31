@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
+import { User } from 'firebase/auth';
 import {
   GameMode,
   GradeLevel,
@@ -9,6 +10,8 @@ import {
   PlayerProfile,
   SubjectArea,
   TargetLearnLanguage,
+  UserProfile,
+  ChildTest,
 } from './types';
 import {
   loadParentConfig,
@@ -21,6 +24,10 @@ import {
   claimDailyQuest,
   getActiveKidProfile,
   fetchRemoteDbData,
+  subscribeToAuth,
+  syncUserProfile,
+  logOut,
+  SUPER_ADMIN_EMAIL,
 } from './utils/storage';
 import { soundFx } from './utils/audio';
 import { Navbar } from './components/Navbar';
@@ -38,15 +45,36 @@ import { OpenSpecHub } from './components/OpenSpec/OpenSpecHub';
 import { BrandAssetGallery } from './components/VisualAssets/BrandAssetGallery';
 import { ParentCenterModal } from './components/ParentCenter/ParentCenterModal';
 import { SkinSelectorModal } from './components/Skins/SkinSelectorModal';
+import { LoginScreen } from './components/Auth/LoginScreen';
+import { ChildTasksBanner } from './components/ChildPortal/ChildTasksBanner';
+import { ChildTestModal } from './components/ChildPortal/ChildTestModal';
 import { getSkinTheme, SkinThemeId } from './utils/skins';
 import { useLanguage } from './context/LanguageContext';
 import { BookOpen, Trophy, Gift, Shield, ShoppingBag } from 'lucide-react';
+
+const CHILD_SESSION_STORAGE_KEY = 'brainboss_active_child_session';
 
 export default function App() {
   const { t, language } = useLanguage();
   const [parentConfig, setParentConfig] = useState<ParentConfig>(loadParentConfig);
   const [profile, setProfile] = useState<KidProfile>(() => getActiveKidProfile(loadParentConfig()));
   
+  // Authentication & RBAC state
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [childSession, setChildSession] = useState<KidProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem(CHILD_SESSION_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+
+  // Active Test Modal for kids
+  const [activeTestForKid, setActiveTestForKid] = useState<ChildTest | null>(null);
+
   const [activeTab, setActiveTab] = useState<'math' | 'achievements' | 'openspec' | 'assets' | 'parents'>('math');
   const [activeSubject, setActiveSubject] = useState<SubjectArea>('math');
   const [activeGameMode, setActiveGameMode] = useState<GameMode | null>(null);
@@ -67,6 +95,28 @@ export default function App() {
 
   // Active Skin Object
   const currentSkin = getSkinTheme(profile.skinId || 'cyber_neon');
+
+  // Listen to Firebase Auth state
+  useEffect(() => {
+    const unsubscribe = subscribeToAuth(async (user) => {
+      setAuthUser(user);
+      if (user) {
+        try {
+          const profileData = await syncUserProfile(user);
+          setUserProfile(profileData);
+        } catch (err) {
+          console.error('Error fetching user profile:', err);
+        }
+      } else {
+        setUserProfile(null);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   // Handle Skin Selection
   const handleSelectSkin = (skinId: SkinThemeId) => {
@@ -118,6 +168,10 @@ export default function App() {
     if (kid) {
       setProfile(kid);
       savePlayerProfile(kid);
+      if (childSession) {
+        setChildSession(kid);
+        localStorage.setItem(CHILD_SESSION_STORAGE_KEY, JSON.stringify(kid));
+      }
     }
   };
 
@@ -139,6 +193,32 @@ export default function App() {
     // Also sync in parentConfig
     const updatedKids = parentConfig.kids.map((k) => (k.id === updatedKid.id ? updatedKid : k));
     const updatedConfig = { ...parentConfig, kids: updatedKids };
+    setParentConfig(updatedConfig);
+    saveParentConfig(updatedConfig);
+  };
+
+  // Sign out handler
+  const handleSignOut = async () => {
+    soundFx.playPop();
+    try {
+      await logOut();
+    } catch (e) {
+      console.warn('Firebase logout notice:', e);
+    }
+    setAuthUser(null);
+    setUserProfile(null);
+    setChildSession(null);
+    localStorage.removeItem(CHILD_SESSION_STORAGE_KEY);
+  };
+
+  // Child login handler
+  const handleChildLoginSuccess = (kid: KidProfile) => {
+    soundFx.playCorrect();
+    setChildSession(kid);
+    setProfile(kid);
+    savePlayerProfile(kid);
+    localStorage.setItem(CHILD_SESSION_STORAGE_KEY, JSON.stringify(kid));
+    const updatedConfig = { ...parentConfig, activeKidId: kid.id };
     setParentConfig(updatedConfig);
     saveParentConfig(updatedConfig);
   };
@@ -273,6 +353,44 @@ export default function App() {
     saveParentConfig(updatedConfig);
   };
 
+  // If initial auth check is loading, display a clean futuristic loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-4">
+        <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-cyan-400 via-blue-500 to-indigo-600 flex items-center justify-center text-2xl font-black italic shadow-[0_0_40px_rgba(59,130,246,0.5)] animate-pulse mb-4">
+          bB
+        </div>
+        <p className="text-sm font-mono text-cyan-300 uppercase tracking-widest animate-pulse">
+          Authentifizierung wird geprüft...
+        </p>
+      </div>
+    );
+  }
+
+  // If no user is logged in (neither admin via Google nor child via code), render the LoginScreen!
+  if (!authUser && !childSession) {
+    return (
+      <LoginScreen
+        onLoginSuccess={(prof, activeKid, user) => {
+          if (user) setAuthUser(user);
+          if (prof) setUserProfile(prof);
+          if (activeKid) {
+            setProfile(activeKid);
+            savePlayerProfile(activeKid);
+          }
+        }}
+        onAdminLoggedIn={(user, prof) => {
+          setAuthUser(user);
+          if (prof) setUserProfile(prof);
+        }}
+        onChildLoggedIn={handleChildLoginSuccess}
+        onChildLoginSuccess={handleChildLoginSuccess}
+      />
+    );
+  }
+
+  const isChildMode = Boolean(childSession && !authUser);
+
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans selection:bg-cyan-500 selection:text-slate-950 flex flex-col relative overflow-x-hidden">
       {/* Immersive Ambient Glow Backdrop */}
@@ -317,6 +435,9 @@ export default function App() {
         }}
         isMuted={soundMuted}
         onToggleMute={handleToggleSound}
+        userEmail={authUser?.email}
+        isChildMode={isChildMode}
+        onSignOut={handleSignOut}
       />
 
       {/* Main Container Viewport */}
@@ -367,27 +488,46 @@ export default function App() {
           />
         ) : (
           /* Primary Tabs Views */
-          <div>
+          <div className="space-y-4">
             {activeTab === 'math' && (
-              <MathQuestView
-                profile={profile}
-                activeSubject={activeSubject}
-                onSelectSubject={setActiveSubject}
-                onStartGame={handleStartGame}
-                onOpenAiStory={() => setActiveGameMode('ai_story')}
-                onUpdateTargetLanguage={(lang) => {
-                  setSelectedTargetLanguage(lang);
-                  const updatedKid: KidProfile = { ...profile, targetLanguage: lang };
-                  setProfile(updatedKid);
-                  savePlayerProfile(updatedKid);
-                  const updatedKids = parentConfig.kids.map((k) =>
-                    k.id === updatedKid.id ? updatedKid : k
-                  );
-                  const updatedConfig = { ...parentConfig, kids: updatedKids };
-                  setParentConfig(updatedConfig);
-                  saveParentConfig(updatedConfig);
-                }}
-              />
+              <>
+                {/* Child Task & Test Assignment Banner */}
+                <ChildTasksBanner
+                  profile={profile}
+                  config={parentConfig}
+                  onStartTask={(task) => {
+                    soundFx.playPop();
+                    if (task.subject) {
+                      setActiveSubject(task.subject);
+                    }
+                    if (task.topic) {
+                      setSelectedTopic(task.topic);
+                    }
+                    setActiveGameMode('math_quest');
+                  }}
+                  onStartTest={(test) => setActiveTestForKid(test)}
+                />
+
+                <MathQuestView
+                  profile={profile}
+                  activeSubject={activeSubject}
+                  onSelectSubject={setActiveSubject}
+                  onStartGame={handleStartGame}
+                  onOpenAiStory={() => setActiveGameMode('ai_story')}
+                  onUpdateTargetLanguage={(lang) => {
+                    setSelectedTargetLanguage(lang);
+                    const updatedKid: KidProfile = { ...profile, targetLanguage: lang };
+                    setProfile(updatedKid);
+                    savePlayerProfile(updatedKid);
+                    const updatedKids = parentConfig.kids.map((k) =>
+                      k.id === updatedKid.id ? updatedKid : k
+                    );
+                    const updatedConfig = { ...parentConfig, kids: updatedKids };
+                    setParentConfig(updatedConfig);
+                    saveParentConfig(updatedConfig);
+                  }}
+                />
+              </>
             )}
             {activeTab === 'achievements' && <AchievementsView profile={profile} />}
             {activeTab === 'openspec' && <OpenSpecHub />}
@@ -477,7 +617,7 @@ export default function App() {
           <span>{t.footer.missionControl}</span>
           <span className="hidden sm:inline text-slate-700">|</span>
           <span className="hidden sm:inline text-cyan-400 font-bold">
-            {profile.gradeLevel === 'primary' ? t.footer.primaryRecon : t.footer.highSchoolRecon}
+            {profile.schoolClass ? `Klasse ${profile.schoolClass}` : (profile.gradeLevel === 'primary' ? t.footer.primaryRecon : t.footer.highSchoolRecon)}
           </span>
         </div>
         <div className="flex items-center gap-4 sm:gap-6 text-slate-500">
@@ -498,6 +638,8 @@ export default function App() {
         isOpen={showParentCenterModal}
         onClose={() => setShowParentCenterModal(false)}
         config={parentConfig}
+        userProfile={userProfile}
+        onSignOut={handleSignOut}
         onUpdateConfig={handleUpdateParentConfig}
         onSwitchKid={handleSwitchKid}
         onProfileUpdated={(activeKid) => {
@@ -533,6 +675,21 @@ export default function App() {
         activeKid={profile}
         onSelectSkin={handleSelectSkin}
       />
+
+      {/* Active Child Test Modal */}
+      {activeTestForKid && (
+        <ChildTestModal
+          test={activeTestForKid}
+          kid={profile}
+          isOpen={true}
+          onClose={() => setActiveTestForKid(null)}
+          onCompleteTest={(score, total) => {
+            const xpGained = score * 30 + 50;
+            const coinsGained = score * 15 + 25;
+            handleUpdateGameplayStats(xpGained, coinsGained, score > total / 2, 'math_quest', score);
+          }}
+        />
+      )}
     </div>
   );
 }

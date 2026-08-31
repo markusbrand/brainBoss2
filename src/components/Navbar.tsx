@@ -22,6 +22,8 @@ import {
   SlidersHorizontal,
   Check,
   Award,
+  LogOut,
+  User,
 } from 'lucide-react';
 import { GradeLevel, KidProfile, PlayerProfile } from '../types';
 import { soundFx } from '../utils/audio';
@@ -46,6 +48,9 @@ interface NavbarProps {
   onToggleGrade: (grade: GradeLevel) => void;
   isMuted?: boolean;
   onToggleMute?: () => void;
+  userEmail?: string | null;
+  isChildMode?: boolean;
+  onSignOut?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -66,6 +71,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleGrade,
   isMuted = false,
   onToggleMute,
+  userEmail,
+  isChildMode = false,
+  onSignOut,
 }) => {
   const { language, setLanguage, t } = useLanguage();
   const [soundOn, setSoundOn] = useState(!isMuted && soundFx.isEnabled());
@@ -503,6 +511,45 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="text-xs text-emerald-400 font-bold">&rarr;</span>
                 </button>
               </div>
+
+              {/* Account / Auth Session Info */}
+              {(userEmail || isChildMode || onSignOut) && (
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+                    Angemeldet als
+                  </span>
+                  <div className="bg-slate-950/80 border border-slate-800 p-3 rounded-xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 overflow-hidden">
+                      <div className="w-8 h-8 rounded-full bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center shrink-0 text-cyan-300 text-sm">
+                        {isChildMode ? (profile.avatar || '🧒') : <User className="w-4 h-4" />}
+                      </div>
+                      <div className="truncate">
+                        <span className="text-xs font-bold text-white block truncate">
+                          {isChildMode ? `${profile.name} (Kind-Modus)` : (userEmail || 'Eltern / Admin')}
+                        </span>
+                        <span className="text-[10px] text-cyan-400 font-mono">
+                          {isChildMode ? `Klasse ${profile.schoolClass || '2A'}` : 'Google Auth'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {onSignOut && (
+                      <button
+                        onClick={() => {
+                          soundFx.playPop();
+                          setShowSettingsDrawer(false);
+                          onSignOut();
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-semibold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                        title="Abmelden"
+                      >
+                        <LogOut className="w-3 h-3" />
+                        <span>Abmelden</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Drawer Footer */}

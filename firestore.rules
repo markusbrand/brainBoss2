@@ -6,19 +6,65 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Family and parent configuration collection
+    // Helper function to check Super Admin privileges
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin') ||
+        (request.auth.token.email != null &&
+         exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.email)) &&
+         get(/databases/$(database)/documents/authorized_users/$(request.auth.token.email)).data.role == 'super_admin')
+      );
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Authorized users & admin whitelist managed by Super Admin
+    match /authorized_users/{userEmail} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // Family and parent configurations, including kid profiles, tasks, tests
     match /parent_configs/{configId} {
-      allow read, write: if true;
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
     }
 
     // Custom questions collection
     match /custom_questions/{questionId} {
-      allow read, write: if true;
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
     }
 
     // Scanned schoolbook batches collection
     match /scanned_batches/{batchId} {
-      allow read, write: if true;
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Family groups and shared circles
+    match /family_shares/{familyId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Family invite tokens
+    match /family_invites/{inviteCode} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Individual child share tokens
+    match /child_shares/{shareCode} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
     }
   }
 }
+

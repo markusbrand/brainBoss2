@@ -1,6 +1,23 @@
-import { Badge, CustomQuestion, DailyQuest, GameMode, KidProfile, ParentConfig, PlayerProfile, ScannedMaterialBatch, SkinThemeId, SubjectArea } from '../types';
-import { db, initFirebaseAuth, getFamilySyncKey } from '../lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  Badge,
+  CustomQuestion,
+  DailyQuest,
+  GameMode,
+  KidProfile,
+  ParentConfig,
+  PlayerProfile,
+  ScannedMaterialBatch,
+  SkinThemeId,
+  SubjectArea,
+  AuthorizedUser,
+  ChildTask,
+  ChildTest,
+  TestSubmission,
+  UserProfile,
+  UserRole,
+} from '../types';
+import { db, initFirebaseAuth, getFamilySyncKey, SUPER_ADMIN_EMAIL } from '../lib/firebase';
+import { doc, getDoc, setDoc, getDocs, collection, deleteDoc } from 'firebase/firestore';
 
 const STORAGE_KEY_PARENT = 'brainboss_parent_config_v3';
 const STORAGE_KEY_LEGACY = 'brainboss_player_profile_v2';
@@ -412,15 +429,25 @@ export const createDefaultKid = (
   targetLanguage: 'en' | 'fr' | 'it' | 'es' | 'de' = 'en',
   skinId: SkinThemeId = 'cyber_neon',
   manualDifficulty: number = 2,
-  schoolGrade?: number
+  schoolGrade?: number,
+  schoolClass?: string,
+  loginCode?: string,
+  pin?: string
 ): KidProfile => {
   const actualSchoolGrade = schoolGrade || (gradeLevel === 'high_school' ? 5 : 2);
+  const actualClass = schoolClass || `${actualSchoolGrade}A`;
+  const generatedCode = loginCode || `KID-${Math.floor(1000 + Math.random() * 9000)}`;
+  const kidPin = pin || '1234';
+
   return {
     id,
     name,
     avatar,
     gradeLevel,
     schoolGrade: actualSchoolGrade,
+    schoolClass: actualClass,
+    loginCode: generatedCode,
+    pin: kidPin,
     targetLanguage,
     skinId,
     manualDifficulty,
@@ -463,9 +490,103 @@ export const DEFAULT_PARENT_CONFIG: ParentConfig = {
   pin: '1234',
   activeKidId: 'kid_1',
   kids: [
-    createDefaultKid('kid_1', 'Felix', '🚀', 'primary', 'en', 'cyber_neon', 2),
-    createDefaultKid('kid_2', 'Sophie', '🦉', 'high_school', 'fr', 'cosmic_galaxy', 3),
+    createDefaultKid('kid_1', 'Felix', '🚀', 'primary', 'en', 'cyber_neon', 2, 3, '3A', 'FELIX-101', '1234'),
+    createDefaultKid('kid_2', 'Sophie', '🦉', 'high_school', 'fr', 'cosmic_galaxy', 3, 6, '6B', 'SOPHIE-202', '1234'),
   ],
+  tasks: [
+    {
+      id: 'task_math_basics',
+      title: 'Kopfrechen-Training: Addition & Subtraktion',
+      description: 'Löse 10 Rechenaufgaben fehlerfrei für die Klassenarbeit.',
+      subject: 'math',
+      topic: 'addition_subtraction',
+      targetCount: 10,
+      currentCount: 4,
+      assignedKidId: 'all',
+      dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+      status: 'in_progress',
+      rewardXp: 80,
+      rewardCoins: 40,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'task_vocab_en',
+      title: 'Englisch Vokabel-Check: Alltag & Essen',
+      description: 'Trainiere die neuen Schulvokabeln im Vokabel-Sprint.',
+      subject: 'languages',
+      topic: 'food_dining',
+      targetCount: 8,
+      currentCount: 0,
+      assignedKidId: 'kid_1',
+      dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0],
+      status: 'assigned',
+      rewardXp: 100,
+      rewardCoins: 50,
+      createdAt: new Date().toISOString(),
+    },
+  ],
+  tests: [
+    {
+      id: 'test_demo_grade3',
+      title: 'Schularbeit-Vorbereitung: Grundstufe 3',
+      description: 'Überprüfung der Rechenkompetenzen & logisches Denken (15 Minuten)',
+      subject: 'math',
+      schoolGrade: 3,
+      assignedKidIds: ['all'],
+      timeLimitMinutes: 15,
+      dueDate: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
+      createdAt: new Date().toISOString(),
+      createdBy: 'Eltern / Lehrkraft',
+      questions: [
+        {
+          id: 'tq_1',
+          subject: 'math',
+          topic: 'addition_subtraction',
+          gradeLevel: 'primary',
+          schoolGrade: 3,
+          difficulty: 2,
+          question: 'Berechne: 45 + 38 = ?',
+          options: [73, 83, 85, 93],
+          correctAnswer: 83,
+          explanation: '40 + 30 = 70 und 5 + 8 = 13. 70 + 13 = 83.',
+          hint: 'Zerlege die Zehner und Einer!',
+          xp: 25,
+          coins: 10,
+        },
+        {
+          id: 'tq_2',
+          subject: 'math',
+          topic: 'multiplication_division',
+          gradeLevel: 'primary',
+          schoolGrade: 3,
+          difficulty: 3,
+          question: 'Einmaleins: 7 × 8 = ?',
+          options: [54, 56, 58, 64],
+          correctAnswer: 56,
+          explanation: '7 mal 8 ergibt exakt 56.',
+          hint: 'Denke an 7 × 7 = 49 + 7 = 56.',
+          xp: 30,
+          coins: 15,
+        },
+        {
+          id: 'tq_3',
+          subject: 'math',
+          topic: 'missing_number',
+          gradeLevel: 'primary',
+          schoolGrade: 3,
+          difficulty: 3,
+          question: 'Finde die fehlende Zahl: 100 - ? = 64',
+          options: [26, 34, 36, 46],
+          correctAnswer: 36,
+          explanation: '100 - 64 = 36.',
+          hint: 'Ziehe 60 ab (40), dann noch 4 abziehen.',
+          xp: 35,
+          coins: 20,
+        },
+      ],
+    },
+  ],
+  testSubmissions: [],
   allowedSubjects: ['math', 'nature', 'geography', 'art', 'languages'],
   allowedGameModes: [
     'math_quest',
@@ -515,6 +636,9 @@ export const loadParentConfig = (): ParentConfig => {
         return {
           ...DEFAULT_PARENT_CONFIG,
           ...parsed,
+          tasks: Array.isArray(parsed.tasks) ? parsed.tasks : (DEFAULT_PARENT_CONFIG.tasks || []),
+          tests: Array.isArray(parsed.tests) ? parsed.tests : (DEFAULT_PARENT_CONFIG.tests || []),
+          testSubmissions: Array.isArray(parsed.testSubmissions) ? parsed.testSubmissions : [],
         };
       }
     }
@@ -762,4 +886,242 @@ export const claimDailyQuest = (profile: PlayerProfile, questId: string): Player
 
   savePlayerProfile(updated);
   return updated;
+};
+
+// -------------------------------------------------------------
+// CHILD TASKS & HOMEWORK MANAGEMENT
+// -------------------------------------------------------------
+
+export const saveChildTask = (task: ChildTask) => {
+  const config = loadParentConfig();
+  const existingTasks = config.tasks || [];
+  const idx = existingTasks.findIndex((t) => t.id === task.id);
+  let updatedTasks: ChildTask[];
+  if (idx >= 0) {
+    updatedTasks = [...existingTasks];
+    updatedTasks[idx] = task;
+  } else {
+    updatedTasks = [task, ...existingTasks];
+  }
+  const updatedConfig = { ...config, tasks: updatedTasks };
+  saveParentConfig(updatedConfig);
+  return updatedConfig;
+};
+
+export const deleteChildTask = (taskId: string) => {
+  const config = loadParentConfig();
+  const updatedTasks = (config.tasks || []).filter((t) => t.id !== taskId);
+  const updatedConfig = { ...config, tasks: updatedTasks };
+  saveParentConfig(updatedConfig);
+  return updatedConfig;
+};
+
+export const updateChildTaskProgress = (taskId: string, increment = 1): { config: ParentConfig; completed: boolean } => {
+  const config = loadParentConfig();
+  let completedNow = false;
+  const updatedTasks = (config.tasks || []).map((t) => {
+    if (t.id === taskId) {
+      const nextCount = Math.min(t.targetCount, t.currentCount + increment);
+      const isComplete = nextCount >= t.targetCount;
+      if (isComplete && t.status !== 'completed') {
+        completedNow = true;
+      }
+      return {
+        ...t,
+        currentCount: nextCount,
+        status: isComplete ? ('completed' as const) : ('in_progress' as const),
+        completedAt: isComplete && !t.completedAt ? new Date().toISOString() : t.completedAt,
+      };
+    }
+    return t;
+  });
+  const updatedConfig = { ...config, tasks: updatedTasks };
+  saveParentConfig(updatedConfig);
+  return { config: updatedConfig, completed: completedNow };
+};
+
+// -------------------------------------------------------------
+// CHILD TESTS & EXAMS MANAGEMENT
+// -------------------------------------------------------------
+
+export const saveChildTest = (test: ChildTest) => {
+  const config = loadParentConfig();
+  const existingTests = config.tests || [];
+  const idx = existingTests.findIndex((t) => t.id === test.id);
+  let updatedTests: ChildTest[];
+  if (idx >= 0) {
+    updatedTests = [...existingTests];
+    updatedTests[idx] = test;
+  } else {
+    updatedTests = [test, ...existingTests];
+  }
+  const updatedConfig = { ...config, tests: updatedTests };
+  saveParentConfig(updatedConfig);
+  return updatedConfig;
+};
+
+export const deleteChildTest = (testId: string) => {
+  const config = loadParentConfig();
+  const updatedTests = (config.tests || []).filter((t) => t.id !== testId);
+  const updatedConfig = { ...config, tests: updatedTests };
+  saveParentConfig(updatedConfig);
+  return updatedConfig;
+};
+
+export const recordTestSubmission = (submission: TestSubmission): ParentConfig => {
+  const config = loadParentConfig();
+  const existingSubmissions = config.testSubmissions || [];
+  const updatedSubmissions = [submission, ...existingSubmissions.filter((s) => s.id !== submission.id)];
+  const updatedConfig = { ...config, testSubmissions: updatedSubmissions };
+  saveParentConfig(updatedConfig);
+  return updatedConfig;
+};
+
+// -------------------------------------------------------------
+// SUPER ADMIN: AUTHORIZED ADMINS & PARENTS MANAGEMENT
+// -------------------------------------------------------------
+
+export const fetchAuthorizedUsers = async (): Promise<AuthorizedUser[]> => {
+  const defaultList: AuthorizedUser[] = SUPER_ADMIN_EMAIL
+    ? [
+        {
+          email: SUPER_ADMIN_EMAIL,
+          role: 'super_admin',
+          displayName: 'Super Admin',
+          addedBy: 'system_root',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          notes: 'Plattform-Hauptadministrator mit vollen Systemrechten',
+        },
+      ]
+    : [];
+
+  try {
+    const snap = await getDocs(collection(db, 'authorized_users'));
+    if (!snap.empty) {
+      const items: AuthorizedUser[] = [];
+      snap.forEach((d) => {
+        const data = d.data() as AuthorizedUser;
+        items.push({
+          email: d.id || data.email,
+          role: data.role || 'parent',
+          displayName: data.displayName || d.id.split('@')[0],
+          addedBy: data.addedBy || 'admin',
+          createdAt: data.createdAt || new Date().toISOString(),
+          notes: data.notes,
+        });
+      });
+      // Ensure super admin is included if configured
+      if (SUPER_ADMIN_EMAIL && !items.some((i) => i.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase())) {
+        items.unshift(defaultList[0]);
+      }
+      return items;
+    }
+  } catch (err) {
+    console.warn('[Firebase] fetchAuthorizedUsers note:', err);
+  }
+
+  // Fallback to local stored whitelist
+  try {
+    const local = localStorage.getItem('brainboss_authorized_users');
+    if (local) {
+      const parsed: AuthorizedUser[] = JSON.parse(local);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+
+  return defaultList;
+};
+
+export const addAuthorizedAdmin = async (
+  email: string,
+  role: UserRole = 'parent',
+  displayName?: string,
+  notes?: string
+): Promise<AuthorizedUser[]> => {
+  const cleanEmail = email.toLowerCase().trim();
+  const newUser: AuthorizedUser = {
+    email: cleanEmail,
+    role,
+    displayName: displayName || cleanEmail.split('@')[0],
+    addedBy: SUPER_ADMIN_EMAIL,
+    createdAt: new Date().toISOString(),
+    notes: notes || 'Vom Haupt-Admin autorisierter Eltern-/Lehrkraft-Account',
+  };
+
+  try {
+    await setDoc(doc(db, 'authorized_users', cleanEmail), newUser, { merge: true });
+  } catch (e) {
+    console.warn('[Firebase] addAuthorizedAdmin to cloud note:', e);
+  }
+
+  const currentList = await fetchAuthorizedUsers();
+  const filtered = currentList.filter((u) => u.email.toLowerCase() !== cleanEmail);
+  const updated = [newUser, ...filtered];
+  try {
+    localStorage.setItem('brainboss_authorized_users', JSON.stringify(updated));
+  } catch {}
+  return updated;
+};
+
+export const removeAuthorizedAdmin = async (email: string): Promise<AuthorizedUser[]> => {
+  const cleanEmail = email.toLowerCase().trim();
+  if (SUPER_ADMIN_EMAIL && cleanEmail === SUPER_ADMIN_EMAIL.toLowerCase()) {
+    throw new Error('Der Haupt-Administrator kann nicht entfernt werden.');
+  }
+
+  try {
+    await deleteDoc(doc(db, 'authorized_users', cleanEmail));
+  } catch (e) {
+    console.warn('[Firebase] removeAuthorizedAdmin note:', e);
+  }
+
+  const currentList = await fetchAuthorizedUsers();
+  const updated = currentList.filter((u) => u.email.toLowerCase() !== cleanEmail);
+  try {
+    localStorage.setItem('brainboss_authorized_users', JSON.stringify(updated));
+  } catch {}
+  return updated;
+};
+
+export {
+  initFirebaseAuth,
+  subscribeToAuth,
+  signInWithGoogle,
+  logOut,
+  syncUserProfile,
+  SUPER_ADMIN_EMAIL,
+} from '../lib/firebase';
+
+
+export const verifyChildLogin = (
+  loginIdentifier: string,
+  pinOrCode: string
+): { success: boolean; kid?: KidProfile; error?: string } => {
+  const config = loadParentConfig();
+  const cleanId = (loginIdentifier || '').trim().toLowerCase();
+  const cleanCode = (pinOrCode || '').trim().toLowerCase();
+
+  // Find kid by loginCode or ID or Name
+  const matchedKid = config.kids.find((k) => {
+    const matchesCode = (k.loginCode || '').toLowerCase() === cleanCode || (k.loginCode || '').toLowerCase() === cleanId;
+    const matchesPin = (k.pin || '1234') === pinOrCode || (k.pin || '1234') === loginIdentifier;
+    const matchesName = k.name.toLowerCase() === cleanId || k.id.toLowerCase() === cleanId;
+
+    return (matchesName && matchesPin) || matchesCode;
+  });
+
+  if (matchedKid) {
+    return { success: true, kid: matchedKid };
+  }
+
+  // Fallback: match by code alone if unique
+  const byCode = config.kids.find((k) => (k.loginCode || '').toLowerCase() === cleanId || (k.loginCode || '').toLowerCase() === cleanCode);
+  if (byCode) {
+    return { success: true, kid: byCode };
+  }
+
+  return {
+    success: false,
+    error: 'Ungültiger Kinder-Login-Code oder PIN. Bitte frage deine Eltern nach deinem Code (z. B. FELIX-101).',
+  };
 };

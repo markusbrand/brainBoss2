@@ -53,6 +53,8 @@ export const QuestionManagerTab: React.FC = () => {
 
   // Manual Creation Panel state
   const [showManualForm, setShowManualForm] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [formErrorMsg, setFormErrorMsg] = useState<string | null>(null);
   const [formSubject, setFormSubject] = useState<SubjectArea>('math');
   const [formTopic, setFormTopic] = useState<string>('general');
   const [formGrade, setFormGrade] = useState<GradeLevel>('primary');
@@ -82,11 +84,17 @@ export const QuestionManagerTab: React.FC = () => {
   };
 
   const handleResetAll = () => {
-    if (window.confirm(isDe ? 'Möchtest du wirklich alle benutzerdefinierten und KI-generierten Fragen löschen?' : 'Do you really want to reset and delete all custom/AI generated questions?')) {
-      resetCustomQuestions();
-      setCustomQuestions([]);
-      soundFx.playPop();
-    }
+    setShowResetConfirm(true);
+    soundFx.playPop();
+  };
+
+  const handleConfirmReset = () => {
+    resetCustomQuestions();
+    setCustomQuestions([]);
+    setShowResetConfirm(false);
+    soundFx.playPop();
+    setGenSuccessMsg(isDe ? 'Alle benutzerdefinierten Fragen wurden gelöscht.' : 'All custom questions were reset.');
+    setTimeout(() => setGenSuccessMsg(null), 4000);
   };
 
   // Generate Questions with Server Gemini API
@@ -149,8 +157,14 @@ export const QuestionManagerTab: React.FC = () => {
   // Save manual custom question
   const handleSaveManualQuestion = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormErrorMsg(null);
     if (!formQuestion.trim() || !formOpt1.trim() || !formOpt2.trim()) {
-      alert(isDe ? 'Bitte fülle Frage und mindestens 2 Antwortoptionen aus!' : 'Please enter a question and at least 2 options!');
+      setFormErrorMsg(
+        isDe
+          ? 'Bitte fülle die Frage und mindestens 2 Antwortoptionen aus!'
+          : 'Please enter a question and at least 2 options!'
+      );
+      soundFx.playWrong();
       return;
     }
 
@@ -497,6 +511,16 @@ export const QuestionManagerTab: React.FC = () => {
       {/* 2. MANUAL QUESTION CREATOR FORM */}
       {showManualForm && (
         <form onSubmit={handleSaveManualQuestion} className="p-5 rounded-2xl bg-slate-950/90 border border-cyan-500/40 space-y-4 shadow-xl animate-in fade-in duration-200">
+          {formErrorMsg && (
+            <div className="p-3 bg-rose-950/70 border border-rose-500/50 rounded-xl text-rose-300 text-xs font-semibold flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{formErrorMsg}</span>
+              </div>
+              <button type="button" onClick={() => setFormErrorMsg(null)} className="text-rose-400 hover:text-white">✕</button>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-bold text-white flex items-center gap-2">
               <Plus className="w-4 h-4 text-cyan-400" />
@@ -870,6 +894,51 @@ export const QuestionManagerTab: React.FC = () => {
           })
         )}
       </div>
+
+      {/* Reset Confirmation In-App Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-slate-900 border border-rose-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-lg font-bold text-white">
+                  {isDe ? 'Alle eigenen Fragen löschen?' : 'Delete all custom questions?'}
+                </h4>
+                <p className="text-xs text-rose-300/80 font-medium">
+                  {isDe ? 'Diese Aktion löscht alle selbst erstellten und KI-generierten Aufgaben.' : 'This action permanently removes all custom and AI questions.'}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {isDe
+                ? `Möchtest du wirklich alle ${customQuestions.length} benutzerdefinierten Fragen unwiderruflich löschen? Die Standard-Systemfragen bleiben erhalten.`
+                : `Do you really want to permanently delete all ${customQuestions.length} custom questions? Core system questions will remain untouched.`}
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReset}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/30 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDe ? 'Alle löschen' : 'Delete All'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

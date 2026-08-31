@@ -208,6 +208,7 @@ export const translations = {
       
       // Tabs
       tabKids: 'Kinder & Profile',
+      tabFamily: 'Familie & Teilen',
       tabAnalytics: 'Lernfortschritt aller Kinder',
       tabCurriculum: 'Lehrplan & Themen',
       tabGameControl: 'Spiele & Bildschirmzeit',
@@ -216,6 +217,7 @@ export const translations = {
       // Kids Management
       activeBadge: 'Aktiver Lerner',
       switchKidBtn: 'Als aktives Kind festlegen',
+      shareChild: 'Kind teilen (Freigabecode)',
       addNewKid: 'Neues Kind hinzufügen',
       editKid: 'Profil bearbeiten',
       deleteKid: 'Profil löschen',
@@ -724,6 +726,7 @@ export const translations = {
       
       // Tabs
       tabKids: 'Learner Profiles',
+      tabFamily: 'Family & Sharing',
       tabAnalytics: 'All Kids Progress & Reports',
       tabCurriculum: 'Curriculum & Topics',
       tabGameControl: 'Games & Screen Time',
@@ -732,6 +735,7 @@ export const translations = {
       // Kids Management
       activeBadge: 'Active Learner',
       switchKidBtn: 'Set as Active Learner',
+      shareChild: 'Share Child (Invite Code)',
       addNewKid: 'Add New Learner',
       editKid: 'Edit Profile',
       deleteKid: 'Delete Profile',

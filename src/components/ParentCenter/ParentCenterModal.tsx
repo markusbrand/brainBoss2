@@ -25,8 +25,13 @@ import {
   Volume2,
   SlidersHorizontal,
   Camera,
+  ClipboardList,
+  GraduationCap,
+  LogOut,
+  Share2,
+  HeartHandshake,
 } from 'lucide-react';
-import { GameMode, GradeLevel, KidProfile, ParentConfig, SkinThemeId, SubjectArea, TargetLearnLanguage } from '../../types';
+import { GameMode, GradeLevel, KidProfile, ParentConfig, SkinThemeId, SubjectArea, TargetLearnLanguage, UserProfile } from '../../types';
 import {
   createDefaultKid,
   loadParentConfig,
@@ -37,6 +42,11 @@ import { getLanguageDisplayName, getLanguageFlag } from '../../utils/subjectEngi
 import { SKIN_THEMES } from '../../utils/skins';
 import { QuestionManagerTab } from './QuestionManagerTab';
 import { SchoolbookScannerTab } from './SchoolbookScannerTab';
+import { TasksAndTestsTab } from './TasksAndTestsTab';
+import { SuperAdminManagerTab } from './SuperAdminManagerTab';
+import { FamilySharingTab } from './FamilySharingTab';
+import { ChildShareModal } from './ChildShareModal';
+import { SUPER_ADMIN_EMAIL } from '../../lib/firebase';
 import { useLanguage } from '../../context/LanguageContext';
 import { soundFx } from '../../utils/audio';
 
@@ -44,6 +54,8 @@ interface ParentCenterModalProps {
   isOpen: boolean;
   onClose: () => void;
   config?: ParentConfig;
+  userProfile?: UserProfile | null;
+  onSignOut?: () => void;
   onUpdateConfig?: (config: ParentConfig) => void;
   onSwitchKid?: (kidId: string) => void;
   onProfileUpdated?: (activeKid: KidProfile) => void;
@@ -53,6 +65,8 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
   isOpen,
   onClose,
   config: propConfig,
+  userProfile,
+  onSignOut,
   onUpdateConfig,
   onSwitchKid,
   onProfileUpdated,
@@ -62,7 +76,7 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState(false);
-  const [activeTab, setActiveTab] = useState<'kids' | 'analytics' | 'curriculum' | 'scanner' | 'questions' | 'games' | 'settings'>('kids');
+  const [activeTab, setActiveTab] = useState<'kids' | 'family' | 'tasks_tests' | 'super_admin' | 'analytics' | 'curriculum' | 'scanner' | 'questions' | 'games' | 'settings'>('kids');
 
   // Sync internal config when propConfig changes
   useEffect(() => {
@@ -80,11 +94,22 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
   const [kidFormAvatar, setKidFormAvatar] = useState('🚀');
   const [kidFormGrade, setKidFormGrade] = useState<GradeLevel>('primary');
   const [kidFormSchoolGrade, setKidFormSchoolGrade] = useState<number>(2);
+  const [kidFormSchoolClass, setKidFormSchoolClass] = useState<string>('2A');
+  const [kidFormLoginCode, setKidFormLoginCode] = useState<string>('');
+  const [kidFormPin, setKidFormPin] = useState<string>('1234');
   const [kidFormTargetLang, setKidFormTargetLang] = useState<TargetLearnLanguage>('en');
   const [kidFormDailyGoal, setKidFormDailyGoal] = useState<number>(10);
   const [kidFormDifficulty, setKidFormDifficulty] = useState<number>(2);
   const [kidFormSkin, setKidFormSkin] = useState<SkinThemeId>('cyber_neon');
   const [showAddKidForm, setShowAddKidForm] = useState(false);
+
+  // Kid deletion modal state
+  const [kidToDelete, setKidToDelete] = useState<KidProfile | null>(null);
+  const [kidActionError, setKidActionError] = useState<string | null>(null);
+  const [kidActionSuccess, setKidActionSuccess] = useState<string | null>(null);
+
+  // Single kid share modal state
+  const [childToShare, setChildToShare] = useState<KidProfile | null>(null);
 
   // PIN change state
   const [newPin, setNewPin] = useState('');
@@ -142,6 +167,9 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
     setKidFormName('');
     setKidFormAvatar('🤖');
     setKidFormSchoolGrade(2);
+    setKidFormSchoolClass('2A');
+    setKidFormLoginCode(`KID-${Math.floor(100 + Math.random() * 900)}`);
+    setKidFormPin('1234');
     setKidFormGrade('primary');
     setKidFormTargetLang(language === 'de' ? 'en' : 'fr');
     setKidFormDailyGoal(10);
@@ -157,6 +185,9 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
     setKidFormAvatar(kid.avatar);
     const resolvedSchoolGrade = kid.schoolGrade || (kid.gradeLevel === 'high_school' ? 5 : 2);
     setKidFormSchoolGrade(resolvedSchoolGrade);
+    setKidFormSchoolClass(kid.schoolClass || `${resolvedSchoolGrade}A`);
+    setKidFormLoginCode(kid.loginCode || `${kid.name.toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`);
+    setKidFormPin(kid.pin || '1234');
     setKidFormGrade(resolvedSchoolGrade > 4 ? 'high_school' : 'primary');
     setKidFormTargetLang(kid.targetLanguage || 'en');
     setKidFormDailyGoal(kid.dailyGoalProblems || 10);
@@ -181,6 +212,9 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
             avatar: kidFormAvatar,
             gradeLevel: computedGradeLevel,
             schoolGrade: kidFormSchoolGrade,
+            schoolClass: kidFormSchoolClass.trim() || `${kidFormSchoolGrade}A`,
+            loginCode: kidFormLoginCode.trim() || k.loginCode,
+            pin: kidFormPin.trim() || '1234',
             targetLanguage: kidFormTargetLang,
             dailyGoalProblems: kidFormDailyGoal,
             manualDifficulty: kidFormDifficulty,
@@ -199,6 +233,9 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
         kidFormTargetLang,
         kidFormSchoolGrade
       );
+      newKid.schoolClass = kidFormSchoolClass.trim() || `${kidFormSchoolGrade}A`;
+      newKid.loginCode = kidFormLoginCode.trim() || `${trimmedName.toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+      newKid.pin = kidFormPin.trim() || '1234';
       newKid.dailyGoalProblems = kidFormDailyGoal;
       newKid.manualDifficulty = kidFormDifficulty;
       newKid.skinId = kidFormSkin;
@@ -211,27 +248,48 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
     notifyConfigChange(updatedConfig);
   };
 
-  const handleDeleteKid = (kidId: string) => {
+  const handleRequestDeleteKid = (kid: KidProfile) => {
+    soundFx.playPop();
+    setKidActionError(null);
+    setKidActionSuccess(null);
     if (config.kids.length <= 1) {
-      alert(language === 'de' ? 'Mindestens ein Kind-Profil muss vorhanden bleiben.' : 'At least one learner profile must remain.');
+      soundFx.playWrong();
+      setKidActionError(
+        language === 'de'
+          ? 'Mindestens ein Kind-Profil muss vorhanden bleiben.'
+          : 'At least one learner profile must remain.'
+      );
+      setTimeout(() => setKidActionError(null), 4500);
       return;
     }
-    if (!confirm(t.parentCenter.confirmDelete)) return;
+    setKidToDelete(kid);
+  };
 
-    soundFx.playWrong();
-    const updatedKids = config.kids.filter((k) => k.id !== kidId);
+  const handleConfirmDeleteKid = () => {
+    if (!kidToDelete) return;
+    soundFx.playPop();
+    const deletedName = kidToDelete.name;
+    const deletedId = kidToDelete.id;
+    const updatedKids = config.kids.filter((k) => k.id !== deletedId);
     let nextActiveId = config.activeKidId;
-    if (nextActiveId === kidId) {
-      nextActiveId = updatedKids[0].id;
+    if (nextActiveId === deletedId) {
+      nextActiveId = updatedKids[0]?.id || '';
     }
 
-    const updatedConfig = {
+    const updatedConfig: ParentConfig = {
       ...config,
       kids: updatedKids,
       activeKidId: nextActiveId,
     };
     setSelectedKidIdForAdmin(nextActiveId);
     notifyConfigChange(updatedConfig);
+    setKidToDelete(null);
+    setKidActionSuccess(
+      language === 'de'
+        ? `Profil "${deletedName}" wurde erfolgreich gelöscht.`
+        : `Profile "${deletedName}" was successfully deleted.`
+    );
+    setTimeout(() => setKidActionSuccess(null), 4500);
   };
 
   const handleToggleGameMode = (mode: GameMode) => {
@@ -304,7 +362,7 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
       <div className="bg-slate-900 border border-indigo-500/40 rounded-3xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-[0_0_50px_rgba(99,102,241,0.2)] overflow-hidden text-white">
         {/* Header */}
-        <div className="px-6 py-4 bg-linear-to-r from-slate-950 via-indigo-950/80 to-slate-950 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 bg-linear-to-r from-slate-950 via-indigo-950/80 to-slate-950 border-b border-slate-800 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-300">
               <Shield className="w-5 h-5" />
@@ -313,19 +371,44 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-white">{t.parentCenter.title}</h2>
                 <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-mono font-bold uppercase tracking-wider">
-                  Admin
+                  {userProfile?.role === 'super_admin' ? 'Super Admin' : 'Admin / Eltern'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400">{t.parentCenter.subtitle}</p>
+              <p className="text-xs text-slate-400">
+                {userProfile?.email ? (
+                  <span className="font-mono text-cyan-400 font-semibold">{userProfile.email}</span>
+                ) : (
+                  t.parentCenter.subtitle
+                )}
+              </p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onSignOut && (
+              <button
+                id="btn_modal_signout"
+                type="button"
+                onClick={() => {
+                  soundFx.playPop();
+                  onSignOut();
+                  onClose();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-semibold transition-all cursor-pointer"
+                title="Abmelden"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Abmelden</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content Area: Either PIN Gate or Unlocked Admin Dashboard */}
@@ -385,6 +468,47 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                 <Users className="w-4 h-4" />
                 <span>{t.parentCenter.tabKids}</span>
               </button>
+
+              {/* Family & Co-Parent Sharing Tab */}
+              <button
+                onClick={() => setActiveTab('family')}
+                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  activeTab === 'family'
+                    ? 'bg-linear-to-r from-sky-600/40 via-indigo-600/40 to-purple-600/40 border border-sky-500/60 text-sky-300 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <HeartHandshake className="w-4 h-4 text-sky-400" />
+                <span>{t.parentCenter.tabFamily || (language === 'de' ? 'Familie & Teilen' : 'Family & Sharing')}</span>
+              </button>
+
+              {/* Tasks & Tests Management Tab */}
+              <button
+                onClick={() => setActiveTab('tasks_tests')}
+                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  activeTab === 'tasks_tests'
+                    ? 'bg-linear-to-r from-amber-600/40 via-purple-600/40 to-indigo-600/40 border border-amber-500/60 text-amber-300 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <ClipboardList className="w-4 h-4 text-amber-400" />
+                <span>Aufgaben & Tests</span>
+              </button>
+
+              {/* Super Admin Tab: shown for super admins */}
+              {(userProfile?.role === 'super_admin' || (SUPER_ADMIN_EMAIL && userProfile?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) || !userProfile) && (
+                <button
+                  onClick={() => setActiveTab('super_admin')}
+                  className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    activeTab === 'super_admin'
+                      ? 'bg-linear-to-r from-cyan-600/40 to-indigo-600/40 border border-cyan-500/60 text-cyan-300 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <Shield className="w-4 h-4 text-cyan-400" />
+                  <span>Haupt-Admin & Eltern</span>
+                </button>
+              )}
 
               <button
                 onClick={() => setActiveTab('analytics')}
@@ -475,6 +599,25 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
               {/* 1. KIDS & PROFILES TAB */}
               {activeTab === 'kids' && (
                 <div className="space-y-6">
+                  {/* Status / Error / Success Messages */}
+                  {kidActionError && (
+                    <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center justify-between animate-in fade-in">
+                      <span>{kidActionError}</span>
+                      <button type="button" onClick={() => setKidActionError(null)} className="text-rose-400 hover:text-white p-1">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {kidActionSuccess && (
+                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center justify-between animate-in fade-in">
+                      <span>{kidActionSuccess}</span>
+                      <button type="button" onClick={() => setKidActionSuccess(null)} className="text-emerald-400 hover:text-white p-1">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
                       <h3 className="text-base font-bold text-white">{t.parentCenter.tabKids}</h3>
@@ -524,6 +667,17 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                         </div>
 
                         <div className="space-y-1">
+                          <label className="text-xs text-slate-400 font-semibold">Schulklasse / Gruppe</label>
+                          <input
+                            type="text"
+                            value={kidFormSchoolClass}
+                            onChange={(e) => setKidFormSchoolClass(e.target.value)}
+                            placeholder="z. B. 2A, 3B, 4C..."
+                            className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none uppercase"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
                           <label className="text-xs text-slate-400 font-semibold flex items-center justify-between">
                             <span>{language === 'de' ? 'Schulstufe (Jahrgang):' : 'School Grade:'}</span>
                             <span className="text-[10px] text-amber-400 font-mono">
@@ -536,6 +690,9 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                               const val = Number(e.target.value);
                               setKidFormSchoolGrade(val);
                               setKidFormGrade(val > 4 ? 'high_school' : 'primary');
+                              if (!kidFormSchoolClass || kidFormSchoolClass.length <= 2) {
+                                setKidFormSchoolClass(`${val}A`);
+                              }
                             }}
                             className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
                           >
@@ -552,6 +709,29 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                               <option value={8}>8. Schulstufe (4. Klasse Mittelschule)</option>
                             </optgroup>
                           </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs text-slate-400 font-semibold">Kinder-Login-Code</label>
+                          <input
+                            type="text"
+                            value={kidFormLoginCode}
+                            onChange={(e) => setKidFormLoginCode(e.target.value.toUpperCase())}
+                            placeholder="z. B. FELIX-101"
+                            className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-cyan-300 font-mono text-sm focus:border-indigo-500 focus:outline-none uppercase"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-xs text-slate-400 font-semibold">Kinder-PIN</label>
+                          <input
+                            type="text"
+                            maxLength={6}
+                            value={kidFormPin}
+                            onChange={(e) => setKidFormPin(e.target.value.replace(/\D/g, ''))}
+                            placeholder="1234"
+                            className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-amber-300 font-mono text-sm focus:border-indigo-500 focus:outline-none tracking-widest text-center"
+                          />
                         </div>
 
                         <div className="space-y-1">
@@ -745,6 +925,20 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
 
                             <div className="flex items-center gap-1.5">
                               <button
+                                id={`btn_share_kid_${kid.id}`}
+                                type="button"
+                                onClick={() => {
+                                  soundFx.playPop();
+                                  setChildToShare(kid);
+                                }}
+                                className="p-2 rounded-lg bg-sky-950/60 border border-sky-500/30 hover:bg-sky-900/50 text-sky-300 transition-colors cursor-pointer"
+                                title={language === 'de' ? 'Kind teilen (Freigabecode)' : 'Share Child Profile'}
+                              >
+                                <Share2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                id={`btn_edit_kid_${kid.id}`}
+                                type="button"
                                 onClick={() => handleStartEditKid(kid)}
                                 className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
                                 title={t.parentCenter.editKid}
@@ -752,7 +946,9 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => handleDeleteKid(kid.id)}
+                                id={`btn_delete_kid_${kid.id}`}
+                                type="button"
+                                onClick={() => handleRequestDeleteKid(kid)}
                                 className="p-2 rounded-lg bg-slate-800/80 hover:bg-rose-900/40 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
                                 title={t.parentCenter.deleteKid}
                               >
@@ -761,7 +957,7 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                             </div>
                           </div>
 
-                          {/* Quick Metrics */}
+                          {/* Quick Metrics & Access Codes */}
                           <div className="grid grid-cols-3 gap-2 bg-slate-900/80 p-2.5 rounded-xl text-center text-xs">
                             <div>
                               <span className="text-[10px] text-slate-400 block">{t.questView.totalSolved}</span>
@@ -777,8 +973,22 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                             </div>
                           </div>
 
+                          {/* Kid Login Credentials Box */}
+                          <div className="bg-slate-950/90 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between text-xs font-mono">
+                            <div className="flex items-center gap-1.5 text-cyan-300">
+                              <span className="text-[10px] text-slate-500 font-sans">Login-Code:</span>
+                              <span className="font-bold">{kid.loginCode || `${kid.name.toUpperCase()}-101`}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-amber-300">
+                              <span className="text-[10px] text-slate-500 font-sans">PIN:</span>
+                              <span className="font-bold">{kid.pin || '1234'}</span>
+                            </div>
+                          </div>
+
                           {!isActive && (
                             <button
+                              id={`btn_activate_kid_${kid.id}`}
+                              type="button"
                               onClick={() => handleSwitchKid(kid.id)}
                               className="w-full py-2 rounded-xl bg-slate-800 hover:bg-indigo-600 text-white font-bold text-xs transition-all cursor-pointer"
                             >
@@ -789,7 +999,85 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                       );
                     })}
                   </div>
+
+                  {/* Stateful In-App Kid Deletion Confirmation Modal */}
+                  {kidToDelete && (
+                    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in">
+                      <div className="bg-slate-900 border border-rose-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5 animate-in zoom-in-95">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                            <Trash2 className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <h4 className="text-lg font-bold text-white">
+                              {language === 'de' ? 'Kind-Profil löschen?' : 'Delete Learner Profile?'}
+                            </h4>
+                            <p className="text-xs text-rose-300/80 font-medium">
+                              {language === 'de' ? 'Diese Aktion kann nicht rückgängig gemacht werden.' : 'This action cannot be undone.'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center text-2xl">
+                            {kidToDelete.avatar}
+                          </div>
+                          <div>
+                            <h5 className="text-base font-bold text-white">{kidToDelete.name}</h5>
+                            <p className="text-xs text-slate-400">
+                              {kidToDelete.schoolGrade ? `${kidToDelete.schoolGrade}. Schulstufe` : kidToDelete.gradeLevel} • {kidToDelete.schoolClass || 'Klasse'} • Lvl {kidToDelete.level}
+                            </p>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          {language === 'de'
+                            ? `Möchtest du das Profil von "${kidToDelete.name}" wirklich unwiderruflich löschen? Alle individuellen Lernstände, gelösten Aufgaben und Statistiken werden entfernt.`
+                            : `Do you really want to permanently delete the profile for "${kidToDelete.name}"? All individual progress, tasks, and analytics will be removed.`}
+                        </p>
+
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                          <button
+                            id="btn_cancel_delete_kid"
+                            type="button"
+                            onClick={() => setKidToDelete(null)}
+                            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                          >
+                            {language === 'de' ? 'Abbrechen' : 'Cancel'}
+                          </button>
+                          <button
+                            id="btn_confirm_delete_kid"
+                            type="button"
+                            onClick={handleConfirmDeleteKid}
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-600/30 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>{language === 'de' ? 'Profil endgültig löschen' : 'Delete Profile'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* FAMILY & CO-PARENT SHARING TAB */}
+              {activeTab === 'family' && (
+                <FamilySharingTab
+                  config={config}
+                  userProfile={userProfile}
+                  onUpdateConfig={notifyConfigChange}
+                />
+              )}
+
+              {/* TASKS & TESTS MANAGEMENT TAB */}
+              {activeTab === 'tasks_tests' && (
+                <TasksAndTestsTab config={config} onUpdateConfig={notifyConfigChange} />
+              )}
+
+              {/* SUPER ADMIN & PARENTS MANAGEMENT TAB */}
+              {activeTab === 'super_admin' && (
+                <SuperAdminManagerTab currentEmail={userProfile?.email} />
               )}
 
               {/* 2. ANALYTICS & LEARNING PROGRESS TAB */}
@@ -1104,6 +1392,15 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Child Share Modal Dialog for Quick Sharing */}
+      <ChildShareModal
+        isOpen={Boolean(childToShare)}
+        onClose={() => setChildToShare(null)}
+        kid={childToShare}
+        config={config}
+        userProfile={userProfile}
+      />
     </div>
   );
 };
