@@ -1,11 +1,13 @@
 import { Badge, CustomQuestion, DailyQuest, GameMode, KidProfile, ParentConfig, PlayerProfile, ScannedMaterialBatch, SkinThemeId, SubjectArea } from '../types';
+import { db, initFirebaseAuth, getFamilySyncKey } from '../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const STORAGE_KEY_PARENT = 'brainboss_parent_config_v3';
 const STORAGE_KEY_LEGACY = 'brainboss_player_profile_v2';
 const STORAGE_KEY_CUSTOM_QUESTIONS = 'brainboss_custom_questions_v1';
 const STORAGE_KEY_SCANNED_BATCHES = 'brainboss_scanned_batches_v1';
 
-// Debounced background sync with PostgreSQL server backend if available
+// Debounced background sync with Firebase Firestore and optional PostgreSQL backend
 let syncTimer: any = null;
 
 export const triggerRemoteDbSync = () => {
@@ -17,6 +19,35 @@ export const triggerRemoteDbSync = () => {
       const customQuestions = loadCustomQuestions();
       const scannedBatches = loadScannedBatches();
 
+      // 1. Sync to Firebase Firestore
+      try {
+        await initFirebaseAuth();
+        const familyKey = getFamilySyncKey();
+        const configDocRef = doc(db, 'parent_configs', familyKey);
+        await setDoc(configDocRef, {
+          ...parentConfig,
+          familyId: familyKey,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+
+        const questionsDocRef = doc(db, 'custom_questions', familyKey);
+        await setDoc(questionsDocRef, {
+          familyId: familyKey,
+          items: customQuestions,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+
+        const batchesDocRef = doc(db, 'scanned_batches', familyKey);
+        await setDoc(batchesDocRef, {
+          familyId: familyKey,
+          items: scannedBatches,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      } catch (firestoreErr) {
+        console.warn('[Firebase Sync] Firestore background sync note:', firestoreErr);
+      }
+
+      // 2. Fallback / dual sync with PostgreSQL backend (if running in Docker)
       await fetch('/api/db/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -30,15 +61,56 @@ export const triggerRemoteDbSync = () => {
 
 export const fetchRemoteDbData = async (): Promise<boolean> => {
   if (typeof window === 'undefined') return false;
+  let hasUpdates = false;
+
+  // 1. Try fetching from Firebase Firestore first
+  try {
+    await initFirebaseAuth();
+    const familyKey = getFamilySyncKey();
+    const configDocRef = doc(db, 'parent_configs', familyKey);
+    const configSnap = await getDoc(configDocRef);
+
+    if (configSnap.exists()) {
+      const remoteConfig = configSnap.data() as ParentConfig;
+      if (remoteConfig && remoteConfig.kids && remoteConfig.kids.length > 0) {
+        localStorage.setItem(STORAGE_KEY_PARENT, JSON.stringify(remoteConfig));
+        hasUpdates = true;
+      }
+    }
+
+    const questionsDocRef = doc(db, 'custom_questions', familyKey);
+    const questionsSnap = await getDoc(questionsDocRef);
+    if (questionsSnap.exists()) {
+      const data = questionsSnap.data();
+      if (data && Array.isArray(data.items) && data.items.length > 0) {
+        localStorage.setItem(STORAGE_KEY_CUSTOM_QUESTIONS, JSON.stringify(data.items));
+        hasUpdates = true;
+      }
+    }
+
+    const batchesDocRef = doc(db, 'scanned_batches', familyKey);
+    const batchesSnap = await getDoc(batchesDocRef);
+    if (batchesSnap.exists()) {
+      const data = batchesSnap.data();
+      if (data && Array.isArray(data.items) && data.items.length > 0) {
+        localStorage.setItem(STORAGE_KEY_SCANNED_BATCHES, JSON.stringify(data.items));
+        hasUpdates = true;
+      }
+    }
+
+    if (hasUpdates) return true;
+  } catch (firestoreErr) {
+    console.warn('[Firebase Load] Note:', firestoreErr);
+  }
+
+  // 2. Try fetching from PostgreSQL / Express server
   try {
     const res = await fetch('/api/db/sync');
-    if (!res.ok) return false;
+    if (!res.ok) return hasUpdates;
     const json = await res.json();
-    if (!json.success || !json.data) return false;
+    if (!json.success || !json.data) return hasUpdates;
 
     const { parentConfig, customQuestions, scannedBatches } = json.data;
-
-    let hasUpdates = false;
 
     if (parentConfig && parentConfig.kids && parentConfig.kids.length > 0) {
       localStorage.setItem(STORAGE_KEY_PARENT, JSON.stringify(parentConfig));
@@ -57,7 +129,7 @@ export const fetchRemoteDbData = async (): Promise<boolean> => {
 
     return hasUpdates;
   } catch {
-    return false;
+    return hasUpdates;
   }
 };
 

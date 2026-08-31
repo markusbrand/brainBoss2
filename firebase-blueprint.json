@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "parent_configs": {
+      "title": "Parent Config",
+      "description": "Stores parental configuration, PIN, and kid learning profiles",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner user ID (auth or device ID)" },
+        "pin": { "type": "string", "description": "4-digit parent PIN" },
+        "activeKidId": { "type": "string", "description": "ID of current active kid profile" },
+        "kids": { "type": "array", "description": "Array of kid profiles with XP, coins, streak, level, stats" },
+        "allowedSubjects": { "type": "array", "description": "Allowed subject areas" },
+        "allowedGameModes": { "type": "array", "description": "Allowed game modes" },
+        "dailyTimeLimitMinutes": { "type": "number", "description": "Daily screen time limit in minutes" },
+        "enforceDailyGoal": { "type": "boolean", "description": "Whether daily problem goal is enforced" },
+        "allowShopPurchases": { "type": "boolean", "description": "Whether power-up shop is enabled" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["pin", "kids"]
+    },
+    "custom_questions": {
+      "title": "Custom Question",
+      "description": "Parent-authored or AI-scanned homework questions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "subject": { "type": "string" },
+        "topic": { "type": "string" },
+        "gradeLevel": { "type": "string" },
+        "schoolGrade": { "type": "number" },
+        "difficulty": { "type": "number" },
+        "question": { "type": "string" },
+        "options": { "type": "array" },
+        "correctAnswer": { "type": "string" },
+        "explanation": { "type": "string" },
+        "hint": { "type": "string" },
+        "xp": { "type": "number" },
+        "coins": { "type": "number" },
+        "source": { "type": "string" },
+        "scanBatchId": { "type": "string" },
+        "assignedKidId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "question", "options", "correctAnswer"]
+    },
+    "scanned_batches": {
+      "title": "Scanned Material Batch",
+      "description": "Batches of AI-scanned schoolbooks and worksheets",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "subject": { "type": "string" },
+        "schoolGrade": { "type": "number" },
+        "difficulty": { "type": "number" },
+        "assignedKidId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "questionCount": { "type": "number" },
+        "extractedSummary": { "type": "string" },
+        "sourceBookOrChapter": { "type": "string" }
+      },
+      "required": ["id", "title", "subject", "schoolGrade"]
+    }
+  },
+  "firestore": {
+    "collections": [
+      {
+        "path": "parent_configs/{configId}",
+        "entity": "parent_configs",
+        "description": "Family and parent profile configurations"
+      },
+      {
+        "path": "custom_questions/{questionId}",
+        "entity": "custom_questions",
+        "description": "Custom questions bank"
+      },
+      {
+        "path": "scanned_batches/{batchId}",
+        "entity": "scanned_batches",
+        "description": "Schoolbook scan batches"
+      }
+    ]
+  }
+}
