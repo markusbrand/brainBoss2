@@ -1,7 +1,7 @@
 # ==========================================
-# 1. Build Stage
+# 1. Build Stage (Runs natively on the builder host)
 # ==========================================
-FROM node:22-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -16,8 +16,11 @@ COPY . .
 ENV NODE_ENV=production
 RUN npm run build
 
+# Remove devDependencies to keep only production dependencies
+RUN npm prune --omit=dev && npm cache clean --force
+
 # ==========================================
-# 2. Production Runtime Stage
+# 2. Production Runtime Stage (Target platform: amd64/arm64)
 # ==========================================
 FROM node:22-alpine AS runner
 
@@ -29,11 +32,8 @@ ENV PORT=3000
 # Install curl for healthcheck & tzdata
 RUN apk add --no-cache curl tzdata
 
-# Install production dependencies only
-COPY package.json package-lock.json* bun.lock* ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi && npm cache clean --force
-
-# Copy built distribution from builder stage
+# Copy production node_modules, build distribution, and package.json from builder stage
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 
