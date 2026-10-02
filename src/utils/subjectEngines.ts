@@ -7,7 +7,7 @@ const randInt = (min: number, max: number): number => {
 };
 
 // Helper: shuffle array
-const shuffle = <T>(array: T[]): T[] => {
+export const shuffle = <T>(array: T[]): T[] => {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -1357,18 +1357,19 @@ export const GRAMMAR_DATABASE: GrammarItemDef[] = [
 ];
 
 // Helper: check custom & scanned questions for active kid
-const findMatchingCustomQuestion = (
+export const getMatchingCustomQuestionsList = (
   subject: string,
   topic: string,
   grade: GradeLevel,
-  difficulty: number,
+  difficulty?: number,
   targetLang?: TargetLearnLanguage,
   activeKidId?: string
-): CustomQuestion | null => {
+): CustomQuestion[] => {
   const custom = loadCustomQuestions();
-  
+  let matches: CustomQuestion[] = [];
+
   if (custom.length > 0) {
-    const matches = custom.filter((q) => {
+    matches = custom.filter((q) => {
       // Subject matching
       if (q.subject && q.subject !== subject) return false;
       // Target language matching
@@ -1377,7 +1378,15 @@ const findMatchingCustomQuestion = (
       if (topic && topic !== 'all') {
         const qTopic = (q.topic || '').trim().toLowerCase();
         const searchTopic = topic.trim().toLowerCase();
-        if (qTopic !== searchTopic && !qTopic.includes(searchTopic) && !searchTopic.includes(qTopic)) {
+        const bTitle = (q.scanBatchTitle || '').trim().toLowerCase();
+        const topicMatches =
+          qTopic === searchTopic ||
+          qTopic.includes(searchTopic) ||
+          searchTopic.includes(qTopic) ||
+          bTitle === searchTopic ||
+          bTitle.includes(searchTopic) ||
+          searchTopic.includes(bTitle);
+        if (!topicMatches) {
           return false;
         }
       }
@@ -1387,25 +1396,10 @@ const findMatchingCustomQuestion = (
       }
       return true;
     });
-
-    // If a specific focus topic was selected (not 'all') and we found questions: ALWAYS return one!
-    if (topic && topic !== 'all' && matches.length > 0) {
-      return matches[randInt(0, matches.length - 1)];
-    }
-
-    // Prioritize scanned homework & schoolbook questions if available in general practice!
-    const scannedMatches = matches.filter((q) => q.source === 'schoolbook_scan');
-    if (scannedMatches.length > 0 && Math.random() < 0.7) {
-      return scannedMatches[randInt(0, scannedMatches.length - 1)];
-    }
-
-    if (matches.length > 0 && Math.random() < 0.5) {
-      return matches[randInt(0, matches.length - 1)];
-    }
   }
 
   // Fallback: check questions from official parent tests matching this focus topic
-  if (topic && topic !== 'all') {
+  if (matches.length === 0 && topic && topic !== 'all') {
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem('brainboss_parent_config_v3') : null;
       const cfg = raw ? JSON.parse(raw) : null;
@@ -1413,21 +1407,60 @@ const findMatchingCustomQuestion = (
         const tTopic = (t.topic || '').trim().toLowerCase();
         const tTitle = (t.title || '').trim().toLowerCase();
         const searchTopic = topic.trim().toLowerCase();
-        const topicMatch = tTopic === searchTopic || tTopic.includes(searchTopic) || tTitle.includes(searchTopic);
+        const topicMatch =
+          tTopic === searchTopic ||
+          tTopic.includes(searchTopic) ||
+          searchTopic.includes(tTopic) ||
+          tTitle.includes(searchTopic) ||
+          searchTopic.includes(tTitle);
         const kidMatch = t.assignedKidIds?.includes('all') || !activeKidId || t.assignedKidIds?.includes(activeKidId);
         return (t.subject === subject || !t.subject) && topicMatch && kidMatch;
       });
 
       if (matchingTest && matchingTest.questions && matchingTest.questions.length > 0) {
-        const picked = matchingTest.questions[randInt(0, matchingTest.questions.length - 1)];
-        return {
-          ...picked,
+        matches = matchingTest.questions.map((q: any) => ({
+          ...q,
           isCustom: true,
           source: 'schoolbook_scan',
           scanBatchTitle: matchingTest.title,
-        };
+        }));
       }
     } catch {}
+  }
+
+  return matches;
+};
+
+const findMatchingCustomQuestion = (
+  subject: string,
+  topic: string,
+  grade: GradeLevel,
+  difficulty: number,
+  targetLang?: TargetLearnLanguage,
+  activeKidId?: string,
+  excludeIds?: (string | number)[]
+): CustomQuestion | null => {
+  const matches = getMatchingCustomQuestionsList(subject, topic, grade, difficulty, targetLang, activeKidId);
+  if (matches.length === 0) return null;
+
+  const pool = excludeIds && excludeIds.length > 0
+    ? matches.filter((q) => !excludeIds.includes(q.id))
+    : matches;
+  const finalPool = pool.length > 0 ? pool : matches;
+
+  // If a specific focus topic was selected (not 'all') and we found questions: ALWAYS return one!
+  if (topic && topic !== 'all' && finalPool.length > 0) {
+    return finalPool[randInt(0, finalPool.length - 1)];
+  }
+
+  // Prioritize scanned homework & schoolbook questions if available in general practice!
+  const scannedMatches = finalPool.filter((q) => q.source === 'schoolbook_scan');
+  if (scannedMatches.length > 0 && Math.random() < 0.7) {
+    return scannedMatches[randInt(0, scannedMatches.length - 1)];
+  }
+
+  if (finalPool.length > 0 && Math.random() < 0.5) {
+    return finalPool[randInt(0, finalPool.length - 1)];
   }
 
   return null;
@@ -1442,10 +1475,11 @@ export const generateNatureProblem = (
   grade: GradeLevel = 'primary',
   lang: Language = 'de',
   difficulty: number = 2,
-  activeKidId?: string
+  activeKidId?: string,
+  excludeIds?: (string | number)[]
 ): ProblemItem => {
   // Check custom question first
-  const custom = findMatchingCustomQuestion('nature', topic, grade, difficulty, undefined, activeKidId);
+  const custom = findMatchingCustomQuestion('nature', topic, grade, difficulty, undefined, activeKidId, excludeIds);
   if (custom) return custom;
 
   const isDe = lang === 'de';
@@ -1489,9 +1523,10 @@ export const generateGeographyProblem = (
   grade: GradeLevel = 'primary',
   lang: Language = 'de',
   difficulty: number = 2,
-  activeKidId?: string
+  activeKidId?: string,
+  excludeIds?: (string | number)[]
 ): ProblemItem => {
-  const custom = findMatchingCustomQuestion('geography', topic, grade, difficulty, undefined, activeKidId);
+  const custom = findMatchingCustomQuestion('geography', topic, grade, difficulty, undefined, activeKidId, excludeIds);
   if (custom) return custom;
 
   const isDe = lang === 'de';
@@ -1535,9 +1570,10 @@ export const generateArtProblem = (
   grade: GradeLevel = 'primary',
   lang: Language = 'de',
   difficulty: number = 2,
-  activeKidId?: string
+  activeKidId?: string,
+  excludeIds?: (string | number)[]
 ): ProblemItem => {
-  const custom = findMatchingCustomQuestion('art', topic, grade, difficulty, undefined, activeKidId);
+  const custom = findMatchingCustomQuestion('art', topic, grade, difficulty, undefined, activeKidId, excludeIds);
   if (custom) return custom;
 
   const isDe = lang === 'de';
@@ -1582,9 +1618,10 @@ export const generateLanguageProblem = (
   grade: GradeLevel = 'primary',
   lang: Language = 'de',
   difficulty: number = 2,
-  activeKidId?: string
+  activeKidId?: string,
+  excludeIds?: (string | number)[]
 ): ProblemItem => {
-  const custom = findMatchingCustomQuestion('languages', topic, grade, difficulty, targetLang, activeKidId);
+  const custom = findMatchingCustomQuestion('languages', topic, grade, difficulty, targetLang, activeKidId, excludeIds);
   if (custom) return custom;
 
   const isDe = lang === 'de';

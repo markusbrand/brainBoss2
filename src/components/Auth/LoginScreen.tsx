@@ -116,8 +116,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           setLoading(false);
           return;
         }
-        const { user, profile } = await registerWithEmail(emailInput, passwordInput, displayNameInput);
-        handleSuccessfulParentLogin(profile, user);
+        try {
+          const { user, profile } = await registerWithEmail(emailInput, passwordInput, displayNameInput);
+          handleSuccessfulParentLogin(profile, user);
+        } catch (regErr: any) {
+          console.info('Cloud register fallback to local session:', regErr?.code || regErr?.message);
+          const profile = await loginAsDirectParent(emailInput, displayNameInput);
+          handleSuccessfulParentLogin(profile);
+        }
       } else {
         // Sign In
         if (!passwordInput) {
@@ -129,19 +135,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           const { user, profile } = await signInWithEmail(emailInput, passwordInput);
           handleSuccessfulParentLogin(profile, user);
         } catch (firebaseErr: any) {
-          // If user does not exist in cloud yet or offline, fallback smoothly to in-page session
-          if (
-            firebaseErr?.code === 'auth/user-not-found' ||
-            firebaseErr?.code === 'auth/invalid-credential' ||
-            firebaseErr?.code === 'auth/wrong-password' ||
-            firebaseErr?.code === 'auth/network-request-failed'
-          ) {
-            console.info('Cloud email auth fallback to in-page session:', firebaseErr.message);
-            const profile = await loginAsDirectParent(emailInput, displayNameInput);
-            handleSuccessfulParentLogin(profile);
-          } else {
-            throw firebaseErr;
-          }
+          // If cloud auth is unavailable, unconfigured, or offline, fallback smoothly to in-page session
+          console.info('Cloud email auth fallback to in-page session:', firebaseErr?.code || firebaseErr?.message);
+          const profile = await loginAsDirectParent(emailInput, displayNameInput);
+          handleSuccessfulParentLogin(profile);
         }
       }
     } catch (err: any) {
@@ -176,11 +173,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       if (isBlocked) {
         setPopupBlocked(true);
-        setErrorMessage('Popups wurden vom Browser blockiert. Wähle unten einfach den direkten Login ohne Popup!');
+        setErrorMessage('Popups wurden vom Browser blockiert. Wähle einfach den direkten Login ("Direkt (Kein Popup)")!');
+      } else if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain') || err?.message?.includes('blocked')) {
+        setErrorMessage('Google-Anmeldung ist für diese Domain (localhost) in Firebase nicht freigegeben. Bitte nutze den Reiter "Direkt (Kein Popup)" für schnellen Login!');
       } else if (err?.message?.includes('popup-closed-by-user')) {
         setErrorMessage('Das Google-Anmeldefenster wurde vorzeitig geschlossen.');
       } else {
-        setErrorMessage('Google-Anmeldung fehlgeschlagen. Du kannst den direkten Login ohne Popup nutzen.');
+        setErrorMessage('Google-Anmeldung nicht verfügbar. Bitte nutze den Reiter "Direkt (Kein Popup)".');
       }
       soundFx.playWrong();
     } finally {

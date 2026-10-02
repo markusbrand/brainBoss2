@@ -592,16 +592,22 @@ export const generateTask = (
   topic: MathTopic = 'all',
   difficulty = 1,
   lang: Language = 'de',
-  activeKidId?: string
+  activeKidId?: string,
+  excludeIds?: (string | number)[]
 ): MathProblem => {
   const customList = loadCustomQuestions();
-  const mathCustom = customList.filter(
+  const rawMathCustom = customList.filter(
     (q) =>
       (!q.subject || q.subject === 'math') &&
       (!q.gradeLevel || q.gradeLevel === gradeLevel) &&
       (topic === 'all' || !q.topic || q.topic === topic || q.topic.includes('scan')) &&
       (!activeKidId || !q.assignedKidId || q.assignedKidId === 'all' || q.assignedKidId === activeKidId)
   );
+
+  const availableCustom = excludeIds && excludeIds.length > 0
+    ? rawMathCustom.filter(q => !excludeIds.includes(q.id))
+    : rawMathCustom;
+  const mathCustom = availableCustom.length > 0 ? availableCustom : rawMathCustom;
 
   const scannedMath = mathCustom.filter((q) => q.source === 'schoolbook_scan');
   if (scannedMath.length > 0 && Math.random() < 0.7) {

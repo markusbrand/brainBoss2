@@ -396,6 +396,7 @@ export interface AuthorizedUser {
 
 export interface ChildTask {
   id: string;
+  scanBatchId?: string; // Link to the scanned batch if auto-generated
   title: string;
   description?: string;
   subject: SubjectArea;
@@ -413,6 +414,7 @@ export interface ChildTask {
 
 export interface ChildTest {
   id: string;
+  scanBatchId?: string; // Link to the scanned batch if auto-generated
   title: string;
   description?: string;
   subject: SubjectArea;

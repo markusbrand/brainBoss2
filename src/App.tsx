@@ -526,7 +526,12 @@ export default function App() {
                     if (task.topic) {
                       setSelectedTopic(task.topic);
                     }
-                    setActiveGameMode('math_quest');
+                    const questMode: GameMode =
+                      task.subject === 'languages' ? 'language_quest' :
+                      task.subject === 'nature' ? 'nature_quest' :
+                      task.subject === 'geography' ? 'geo_quest' :
+                      task.subject === 'art' ? 'art_quest' : 'math_quest';
+                    setActiveGameMode(questMode);
                   }}
                   onStartTest={(test) => setActiveTestForKid(test)}
                 />
@@ -707,9 +712,25 @@ export default function App() {
       {activeTestForKid && (
         <ChildTestModal
           test={activeTestForKid}
+          profile={profile}
           kid={profile}
           isOpen={true}
           onClose={() => setActiveTestForKid(null)}
+          onTestCompleted={(submission, updatedProfile) => {
+            if (updatedProfile) {
+              setProfile(updatedProfile);
+              savePlayerProfile(updatedProfile);
+              const updatedKids = (parentConfig.kids || []).map((k) =>
+                k && k.id === updatedProfile.id ? updatedProfile : k
+              );
+              const updatedConfig = { ...parentConfig, kids: updatedKids };
+              setParentConfig(updatedConfig);
+              saveParentConfig(updatedConfig);
+            }
+            const xpGained = submission.score * 30 + 50;
+            const coinsGained = submission.score * 15 + 25;
+            handleUpdateGameplayStats(xpGained, coinsGained, submission.accuracy >= 50, 'math_quest', submission.score);
+          }}
           onCompleteTest={(score, total) => {
             const xpGained = score * 30 + 50;
             const coinsGained = score * 15 + 25;

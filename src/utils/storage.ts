@@ -60,8 +60,10 @@ export const triggerRemoteDbSync = () => {
           items: scannedBatches,
           updatedAt: new Date().toISOString(),
         }, { merge: true });
-      } catch (firestoreErr) {
-        console.warn('[Firebase Sync] Firestore background sync note:', firestoreErr);
+      } catch (firestoreErr: any) {
+        if (firestoreErr?.code !== 'permission-denied') {
+          console.warn('[Firebase Sync] Firestore background sync note:', firestoreErr);
+        }
       }
 
       // 2. Fallback / dual sync with PostgreSQL backend (if running in Docker)
@@ -116,8 +118,10 @@ export const fetchRemoteDbData = async (): Promise<boolean> => {
     }
 
     if (hasUpdates) return true;
-  } catch (firestoreErr) {
-    console.warn('[Firebase Load] Note:', firestoreErr);
+  } catch (firestoreErr: any) {
+    if (firestoreErr?.code !== 'permission-denied') {
+      console.warn('[Firebase Load] Note:', firestoreErr);
+    }
   }
 
   // 2. Try fetching from PostgreSQL / Express server
@@ -478,6 +482,26 @@ export const deleteScannedBatch = (batchId: string): { batches: ScannedMaterialB
   const currentQuestions = loadCustomQuestions();
   const updatedQuestions = currentQuestions.filter((q) => q.scanBatchId !== batchId);
   saveCustomQuestions(updatedQuestions);
+
+  // Also delete auto-generated tasks and tests associated with this batch
+  const config = loadParentConfig();
+  let configChanged = false;
+  
+  if (config.tasks) {
+    const originalLength = config.tasks.length;
+    config.tasks = config.tasks.filter((t) => t.scanBatchId !== batchId);
+    if (config.tasks.length !== originalLength) configChanged = true;
+  }
+  
+  if (config.tests) {
+    const originalLength = config.tests.length;
+    config.tests = config.tests.filter((t) => t.scanBatchId !== batchId);
+    if (config.tests.length !== originalLength) configChanged = true;
+  }
+  
+  if (configChanged) {
+    saveParentConfig(config);
+  }
 
   return { batches: updatedBatches, questions: updatedQuestions };
 };

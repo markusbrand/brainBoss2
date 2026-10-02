@@ -134,8 +134,10 @@ export const loginAsDirectParent = async (
         lastLoginAt: profile.lastLoginAt,
       }, { merge: true });
     }
-  } catch (err) {
-    console.warn('[Firebase] Local parent Firestore sync notice:', err);
+  } catch (err: any) {
+    if (err?.code !== 'permission-denied') {
+      console.warn('[Firebase] Local parent Firestore sync notice:', err);
+    }
   }
 
   return profile;
