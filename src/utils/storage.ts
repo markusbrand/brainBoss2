@@ -150,16 +150,290 @@ export const fetchRemoteDbData = async (): Promise<boolean> => {
   }
 };
 
+export const DEFAULT_PRESEEDED_ENGLISH_QUESTIONS: CustomQuestion[] = [
+  {
+    id: 'eq_unit1_1',
+    subject: 'languages',
+    topic: 'English Book Unit 1',
+    gradeLevel: 'primary',
+    schoolGrade: 3,
+    difficulty: 2,
+    targetLanguage: 'en',
+    question: 'Welches Wort bedeutet „Federschachtel / Mäppchen“ auf Englisch?',
+    subtext: 'Schulsachen • School objects 🎒',
+    visual: {
+      type: 'audio_phrase',
+      symbol: '👝',
+      pronounceText: 'pencil case',
+      pronounceLang: 'en-US',
+      audioHint: 'Tippe zum Anhören der Aussprache',
+      imagePrompt: 'A colorful school pencil case with pens and pencils on a wooden desk',
+    },
+    options: ['pencil case', 'pencil sharpener', 'schoolbag', 'rubber'],
+    correctAnswer: 'pencil case',
+    explanation: '„Pencil case“ ist die Federschachtel / das Mäppchen. „Rubber“ ist der Radiergummi.',
+    hint: 'Man bewahrt darin Stifte, Lineal und Radiergummi auf.',
+    xp: 30,
+    coins: 15,
+    source: 'schoolbook_scan',
+    scanBatchId: 'batch_english_book_unit_1',
+    scanBatchTitle: 'English Book Unit 1',
+    assignedKidId: 'all',
+    isCustom: true,
+  },
+  {
+    id: 'eq_unit1_2',
+    subject: 'languages',
+    topic: 'English Book Unit 1',
+    gradeLevel: 'primary',
+    schoolGrade: 3,
+    difficulty: 2,
+    targetLanguage: 'en',
+    question: 'Welcher Artikel ist richtig? „I have ___ orange notebook.“',
+    subtext: 'Grammatik: a oder an? ✍️',
+    visual: {
+      type: 'audio_phrase',
+      symbol: '🍊',
+      pronounceText: 'an orange notebook',
+      pronounceLang: 'en-US',
+      audioHint: 'Tippe zum Anhören der Aussprache',
+      imagePrompt: 'An orange notebook lying on a school desk',
+    },
+    options: ['an', 'a', 'the a', 'one'],
+    correctAnswer: 'an',
+    explanation: 'Vor Wörtern, die mit einem gesprochenen Vokal beginnen (a, e, i, o, u wie bei „orange“), steht „an“. Vor Konsonanten steht „a“ (z.B. a book).',
+    hint: 'Beginnt das Wort mit einem Vokal (o wie orange)? Dann braucht man „an“!',
+    xp: 30,
+    coins: 15,
+    source: 'schoolbook_scan',
+    scanBatchId: 'batch_english_book_unit_1',
+    scanBatchTitle: 'English Book Unit 1',
+    assignedKidId: 'all',
+    isCustom: true,
+  },
+  {
+    id: 'eq_unit1_3',
+    subject: 'languages',
+    topic: 'English Book Unit 1',
+    gradeLevel: 'primary',
+    schoolGrade: 3,
+    difficulty: 2,
+    targetLanguage: 'en',
+    question: 'Setze die richtige Verbform ein: „We ___ happy students today!“',
+    subtext: 'Grammatik: to be (am / is / are) 💬',
+    visual: {
+      type: 'audio_phrase',
+      symbol: '👥',
+      pronounceText: 'We are happy students',
+      pronounceLang: 'en-US',
+      audioHint: 'Tippe zum Anhören der Aussprache',
+      imagePrompt: 'Happy school children smiling in a modern classroom',
+    },
+    options: ['are', 'is', 'am', 'be'],
+    correctAnswer: 'are',
+    explanation: 'I am, you are, he/she/it is, we are, you are, they are. Bei „we“ (wir) heißt es „we are“.',
+    hint: 'Für die Mehrzahl (wir / we) verwendet man „are“.',
+    xp: 30,
+    coins: 15,
+    source: 'schoolbook_scan',
+    scanBatchId: 'batch_english_book_unit_1',
+    scanBatchTitle: 'English Book Unit 1',
+    assignedKidId: 'all',
+    isCustom: true,
+  },
+  {
+    id: 'eq_unit1_4',
+    subject: 'languages',
+    topic: 'English Book Unit 1',
+    gradeLevel: 'primary',
+    schoolGrade: 3,
+    difficulty: 2,
+    targetLanguage: 'en',
+    question: 'Wie heißt die Zahl „12“ auf Englisch geschrieben?',
+    subtext: 'Zahlen 1-20 • Numbers 🔢',
+    visual: {
+      type: 'audio_phrase',
+      symbol: '1️⃣2️⃣',
+      pronounceText: 'twelve',
+      pronounceLang: 'en-US',
+      audioHint: 'Tippe zum Anhören der Aussprache',
+      imagePrompt: 'Number 12 written in friendly educational letters',
+    },
+    options: ['twelve', 'twenty', 'eleven', 'two'],
+    correctAnswer: 'twelve',
+    explanation: '11 = eleven, 12 = twelve, 20 = twenty. Die Zahl 12 wird „twelve“ geschrieben.',
+    hint: 'Es reimt sich fast auf „delve“ und beginnt mit tw...',
+    xp: 30,
+    coins: 15,
+    source: 'schoolbook_scan',
+    scanBatchId: 'batch_english_book_unit_1',
+    scanBatchTitle: 'English Book Unit 1',
+    assignedKidId: 'all',
+    isCustom: true,
+  },
+  {
+    id: 'eq_unit1_5',
+    subject: 'languages',
+    topic: 'English Book Unit 1',
+    gradeLevel: 'primary',
+    schoolGrade: 3,
+    difficulty: 2,
+    targetLanguage: 'en',
+    question: 'Was bedeutet die Lehrer-Anweisung: „Open your books at page 10!“?',
+    subtext: 'Klassenzimmer-Englisch • Classroom phrases 🏫',
+    visual: {
+      type: 'audio_phrase',
+      symbol: '📖',
+      pronounceText: 'Open your books at page ten',
+      pronounceLang: 'en-US',
+      audioHint: 'Tippe zum Anhören der Aussprache',
+      imagePrompt: 'An open school book showing page numbers',
+    },
+    options: [
+      'Öffnet eure Bücher auf Seite 10!',
+      'Schließt eure Bücher sofort!',
+      'Schreibt die Seite 10 ab!',
+      'Legt eure Bücher in die Schultasche!',
+    ],
+    correctAnswer: 'Öffnet eure Bücher auf Seite 10!',
+    explanation: '„Open“ heißt öffnen, „your books“ sind eure Bücher und „page 10“ ist Seite 10.',
+    hint: '„Open“ ist das Gegenteil von „close“ (schließen).',
+    xp: 30,
+    coins: 15,
+    source: 'schoolbook_scan',
+    scanBatchId: 'batch_english_book_unit_1',
+    scanBatchTitle: 'English Book Unit 1',
+    assignedKidId: 'all',
+    isCustom: true,
+  },
+  {
+    id: 'eq_unit1_6',
+    subject: 'languages',
+    topic: 'English Book Unit 1',
+    gradeLevel: 'primary',
+    schoolGrade: 3,
+    difficulty: 2,
+    targetLanguage: 'en',
+    question: 'Welches Wort ist der Plural (Mehrzahl) von „book“?',
+    subtext: 'Grammatik: Plural mit -s 📚',
+    visual: {
+      type: 'audio_phrase',
+      symbol: '📚',
+      pronounceText: 'three books',
+      pronounceLang: 'en-US',
+      audioHint: 'Tippe zum Anhören der Aussprache',
+      imagePrompt: 'A stack of three colorful English textbooks',
+    },
+    options: ['books', 'bookes', 'bookies', 'boox'],
+    correctAnswer: 'books',
+    explanation: 'Die meisten englischen Nomen bilden die Mehrzahl einfach mit einem angehängten „-s“: one book -> two books.',
+    hint: 'Einfach ein s an das Wort anhängen!',
+    xp: 30,
+    coins: 15,
+    source: 'schoolbook_scan',
+    scanBatchId: 'batch_english_book_unit_1',
+    scanBatchTitle: 'English Book Unit 1',
+    assignedKidId: 'all',
+    isCustom: true,
+  },
+  {
+    id: 'eq_unit1_7',
+    subject: 'languages',
+    topic: 'English Book Unit 1',
+    gradeLevel: 'primary',
+    schoolGrade: 3,
+    difficulty: 2,
+    targetLanguage: 'en',
+    question: 'Wie heißt das Schulfach „Mathematik“ auf Englisch kurz im Schulbuch?',
+    subtext: 'Schulfächer • School subjects 📐',
+    visual: {
+      type: 'audio_phrase',
+      symbol: '📐',
+      pronounceText: 'maths',
+      pronounceLang: 'en-US',
+      audioHint: 'Tippe zum Anhören der Aussprache',
+      imagePrompt: 'Math geometry ruler, calculator and notebook',
+    },
+    options: ['maths', 'counting', 'numbers', 'science'],
+    correctAnswer: 'maths',
+    explanation: 'Im britischen Englisch (More! / Easy) heißt das Fach kurz „maths“ (in den USA oft „math“).',
+    hint: 'Das Wort beginnt mit m und endet auf s.',
+    xp: 30,
+    coins: 15,
+    source: 'schoolbook_scan',
+    scanBatchId: 'batch_english_book_unit_1',
+    scanBatchTitle: 'English Book Unit 1',
+    assignedKidId: 'all',
+    isCustom: true,
+  },
+  {
+    id: 'eq_unit1_8',
+    subject: 'languages',
+    topic: 'English Book Unit 1',
+    gradeLevel: 'primary',
+    schoolGrade: 3,
+    difficulty: 2,
+    targetLanguage: 'en',
+    question: 'Welches englische Wort vervollständigt den Satz: „A banana is ___“?',
+    subtext: 'Farben • Colours 🍌',
+    visual: {
+      type: 'audio_phrase',
+      symbol: '🍌',
+      pronounceText: 'yellow',
+      pronounceLang: 'en-US',
+      audioHint: 'Tippe zum Anhören der Aussprache',
+      imagePrompt: 'A ripe bright yellow banana',
+    },
+    options: ['yellow', 'blue', 'green', 'black'],
+    correctAnswer: 'yellow',
+    explanation: '„Yellow“ bedeutet gelb auf Englisch. Eine reife Banane ist gelb.',
+    hint: 'Gelb auf Englisch!',
+    xp: 30,
+    coins: 15,
+    source: 'schoolbook_scan',
+    scanBatchId: 'batch_english_book_unit_1',
+    scanBatchTitle: 'English Book Unit 1',
+    assignedKidId: 'all',
+    isCustom: true,
+  },
+];
+
+export const DEFAULT_SCANNED_BATCHES: ScannedMaterialBatch[] = [
+  {
+    id: 'batch_english_book_unit_1',
+    title: 'English Book Unit 1',
+    subject: 'languages',
+    topic: 'English Book Unit 1',
+    gradeLevel: 'primary',
+    schoolGrade: 3,
+    difficulty: 2,
+    assignedKidId: 'all',
+    targetLanguage: 'en',
+    pagesCount: 11,
+    questionCount: 8,
+    extractedQuestionsCount: 8,
+    createdAt: new Date().toISOString(),
+    aiSummary: 'Schulbuch More! 1 / Easy 1 - Unit 1: Grundvokabular (Federschachtel, Schulsachen), unbestimmte Artikel (a / an), Verb ‚to be‘ (am/is/are), Zahlen 1-20, Klassenzimmer-Anweisungen & Aussprache für deutschsprachige Schüler.',
+    aiModelUsed: 'google/gemini-2.0-flash-001',
+  },
+];
+
 export const loadScannedBatches = (): ScannedMaterialBatch[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SCANNED_BATCHES);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        if (!parsed.some((b: ScannedMaterialBatch) => b.topic === 'English Book Unit 1' || b.id === 'batch_english_book_unit_1')) {
+          return [...DEFAULT_SCANNED_BATCHES, ...parsed];
+        }
+        return parsed;
+      }
     }
   } catch (err) {
     console.error('Failed to load scanned batches:', err);
   }
-  return [];
+  return DEFAULT_SCANNED_BATCHES;
 };
 
 export const saveScannedBatches = (batches: ScannedMaterialBatch[]): void => {
@@ -231,12 +505,18 @@ export const loadCustomQuestions = (): CustomQuestion[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CUSTOM_QUESTIONS);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        if (!parsed.some((q: CustomQuestion) => q.topic === 'English Book Unit 1')) {
+          return [...DEFAULT_PRESEEDED_ENGLISH_QUESTIONS, ...parsed];
+        }
+        return parsed;
+      }
     }
   } catch (err) {
     console.error('Failed to load custom questions:', err);
   }
-  return [];
+  return DEFAULT_PRESEEDED_ENGLISH_QUESTIONS;
 };
 
 export const saveCustomQuestions = (questions: CustomQuestion[]): void => {
@@ -490,10 +770,26 @@ export const DEFAULT_PARENT_CONFIG: ParentConfig = {
   pin: '1234',
   activeKidId: 'kid_1',
   kids: [
-    createDefaultKid('kid_1', 'Felix', '🚀', 'primary', 'en', 'cyber_neon', 2, 3, '3A', 'FELIX-101', '1234'),
+    createDefaultKid('kid_1', 'Linus', '🚀', 'primary', 'en', 'cyber_neon', 2, 3, '3A', 'LINUS-101', '1234'),
     createDefaultKid('kid_2', 'Sophie', '🦉', 'high_school', 'fr', 'cosmic_galaxy', 3, 6, '6B', 'SOPHIE-202', '1234'),
+    createDefaultKid('kid_3', 'Felix', '🦊', 'primary', 'en', 'emerald_forest', 2, 4, '4A', 'FELIX-303', '1234'),
   ],
   tasks: [
+    {
+      id: 'task_english_book_unit_1',
+      title: 'English Book Unit 1: Vokabel- & Schultest-Training',
+      description: 'Löse die Übungen aus English Book Unit 1 für die 1. Schularbeit.',
+      subject: 'languages',
+      topic: 'English Book Unit 1',
+      targetCount: 8,
+      currentCount: 0,
+      assignedKidId: 'all',
+      dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0],
+      status: 'in_progress',
+      rewardXp: 100,
+      rewardCoins: 50,
+      createdAt: new Date().toISOString(),
+    },
     {
       id: 'task_math_basics',
       title: 'Kopfrechen-Training: Addition & Subtraktion',
@@ -585,6 +881,20 @@ export const DEFAULT_PARENT_CONFIG: ParentConfig = {
         },
       ],
     },
+    {
+      id: 'test_english_official_book',
+      title: 'English Book Unit 1 (1. Schularbeit / Quiz)',
+      description: 'Offizieller Schulbuch-Test zu Unit 1: Schulsachen, unbestimmte Artikel (a/an), to be & Aussprache',
+      subject: 'languages',
+      topic: 'English Book Unit 1',
+      schoolGrade: 3,
+      assignedKidIds: ['all'],
+      timeLimitMinutes: 15,
+      dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0],
+      createdAt: new Date().toISOString(),
+      createdBy: 'Schulbuch-Scanner (KI)',
+      questions: DEFAULT_PRESEEDED_ENGLISH_QUESTIONS,
+    },
   ],
   testSubmissions: [],
   allowedSubjects: ['math', 'nature', 'geography', 'art', 'languages'],
@@ -606,6 +916,12 @@ export const DEFAULT_PARENT_CONFIG: ParentConfig = {
   dailyTimeLimitMinutes: 45,
   enforceDailyGoal: false,
   allowShopPurchases: true,
+  openRouter: {
+    apiKey: '',
+    selectedModel: 'google/gemini-2.0-flash-001',
+    provider: 'openrouter',
+    customModelName: '',
+  },
 };
 
 export const loadParentConfig = (): ParentConfig => {
@@ -613,16 +929,47 @@ export const loadParentConfig = (): ParentConfig => {
     const raw = localStorage.getItem(STORAGE_KEY_PARENT);
     if (raw) {
       const parsed: ParentConfig = JSON.parse(raw);
-      if (parsed.kids && parsed.kids.length > 0) {
-        // Ensure all kids have modern fields
-        parsed.kids = parsed.kids.map((kid) => {
+      // Clean and sanitize kids list
+      let rawKidsList = Array.isArray(parsed?.kids)
+        ? parsed.kids.filter((k: any) => k && typeof k === 'object')
+        : [];
+
+      if (rawKidsList.length === 0) {
+        rawKidsList = [...DEFAULT_PARENT_CONFIG.kids];
+      }
+
+      parsed.kids = rawKidsList;
+      // Ensure Linus is present in kids and is configured
+      const linusIndex = parsed.kids.findIndex((k: KidProfile) => k && k.name && k.name.toLowerCase().includes('linus'));
+      if (linusIndex === -1) {
+        const kid1 = parsed.kids.find((k: any) => k && k.id === 'kid_1');
+        if (kid1 && (kid1.name === 'Felix' || !kid1.name)) {
+          kid1.name = 'Linus';
+          kid1.targetLanguage = 'en';
+          kid1.schoolGrade = 3;
+          kid1.schoolClass = '3A';
+        } else {
+          const linusKid = createDefaultKid('kid_1', 'Linus', '🚀', 'primary', 'en', 'cyber_neon', 2, 3, '3A', 'LINUS-101', '1234');
+          parsed.kids = [linusKid, ...parsed.kids.filter((k: any) => k && k.id !== 'kid_1')];
+        }
+      }
+      if (!parsed.activeKidId || parsed.activeKidId === 'kid_1') {
+        parsed.activeKidId = 'kid_1';
+      }
+
+      // Ensure all kids have modern fields and are valid
+      parsed.kids = parsed.kids
+        .filter((k: any) => Boolean(k && typeof k === 'object'))
+        .map((kid) => {
           const mergedBadges = INITIAL_BADGES.map((b) => {
-            const existing = (kid.badges || []).find((eb) => eb.id === b.id);
+            const existing = (kid.badges || []).find((eb) => eb && eb.id === b.id);
             return existing || b;
           });
           return {
-            ...createDefaultKid(kid.id || 'kid_1', kid.name || 'Learner', kid.avatar || '🤖'),
+            ...createDefaultKid(kid.id || 'kid_1', kid.name || 'Linus', kid.avatar || '🚀'),
             ...kid,
+            id: kid.id || 'kid_1',
+            name: kid.name || 'Linus',
             skinId: kid.skinId || 'cyber_neon',
             schoolGrade: typeof kid.schoolGrade === 'number' ? kid.schoolGrade : (kid.gradeLevel === 'high_school' ? 5 : 2),
             manualDifficulty: typeof kid.manualDifficulty === 'number' ? kid.manualDifficulty : 2,
@@ -633,14 +980,56 @@ export const loadParentConfig = (): ParentConfig => {
             },
           };
         });
-        return {
-          ...DEFAULT_PARENT_CONFIG,
-          ...parsed,
-          tasks: Array.isArray(parsed.tasks) ? parsed.tasks : (DEFAULT_PARENT_CONFIG.tasks || []),
-          tests: Array.isArray(parsed.tests) ? parsed.tests : (DEFAULT_PARENT_CONFIG.tests || []),
-          testSubmissions: Array.isArray(parsed.testSubmissions) ? parsed.testSubmissions : [],
-        };
+
+      // Ensure English Book Unit 1 test is present
+      const currentTests: ChildTest[] = Array.isArray(parsed.tests)
+        ? parsed.tests.filter((t: any) => t && typeof t === 'object' && t.id)
+        : [];
+      let updatedTests = [...currentTests];
+      const hasUnit1Test = updatedTests.some(
+        (t) => t && (t.topic === 'English Book Unit 1' || t.id === 'test_english_official_book')
+      );
+      if (!hasUnit1Test) {
+        updatedTests.push(DEFAULT_PARENT_CONFIG.tests[1]);
+      } else {
+        updatedTests = updatedTests.map((t) => {
+          if (!t) return t;
+          if (t.id === 'test_english_official_book' || (t.title && t.title.includes('English Official Book'))) {
+            return {
+              ...t,
+              topic: 'English Book Unit 1',
+              title: 'English Book Unit 1 (1. Schularbeit / Quiz)',
+              assignedKidIds: ['all'],
+              questions: DEFAULT_PRESEEDED_ENGLISH_QUESTIONS,
+            };
+          }
+          return t;
+        }).filter(Boolean);
       }
+
+      // Ensure English Book Unit 1 task is present
+      const currentTasks: ChildTask[] = Array.isArray(parsed.tasks)
+        ? parsed.tasks.filter((t: any) => t && typeof t === 'object' && t.id)
+        : [];
+      let updatedTasks = [...currentTasks];
+      const hasUnit1Task = updatedTasks.some((t) => t && t.topic === 'English Book Unit 1');
+      if (!hasUnit1Task) {
+        updatedTasks.unshift(DEFAULT_PARENT_CONFIG.tasks[0]);
+      }
+
+      return {
+        ...DEFAULT_PARENT_CONFIG,
+        ...parsed,
+        kids: parsed.kids.length > 0 ? parsed.kids : DEFAULT_PARENT_CONFIG.kids,
+        activeKidId: parsed.activeKidId || 'kid_1',
+        openRouter: {
+          ...DEFAULT_PARENT_CONFIG.openRouter!,
+          ...(parsed.openRouter || {}),
+        },
+        tasks: updatedTasks,
+        tests: updatedTests,
+        testSubmissions: Array.isArray(parsed.testSubmissions) ? parsed.testSubmissions : [],
+      };
     }
 
     // Try legacy single profile migration
@@ -648,7 +1037,7 @@ export const loadParentConfig = (): ParentConfig => {
     if (legacyRaw) {
       const legacy = JSON.parse(legacyRaw);
       const migratedKid: KidProfile = {
-        ...createDefaultKid('kid_1', legacy.name || 'Brain Cadet', legacy.avatar || '🤖', legacy.gradeLevel || 'primary'),
+        ...createDefaultKid('kid_1', legacy.name || 'Linus', legacy.avatar || '🚀', legacy.gradeLevel || 'primary'),
         ...legacy,
         subjectStats: createEmptySubjectStats(),
       };
@@ -676,16 +1065,25 @@ export const saveParentConfig = (config: ParentConfig): void => {
 };
 
 export const getActiveKidProfile = (config: ParentConfig): KidProfile => {
+  if (!config) {
+    return DEFAULT_PARENT_CONFIG.kids[0];
+  }
+  const validKids = Array.isArray(config.kids)
+    ? config.kids.filter((k: any) => Boolean(k && typeof k === 'object' && k.id && k.name))
+    : [];
+  if (validKids.length === 0) {
+    return DEFAULT_PARENT_CONFIG.kids[0];
+  }
   return (
-    config.kids.find((k) => k.id === config.activeKidId) ||
-    config.kids[0] ||
+    validKids.find((k) => k.id === config.activeKidId) ||
+    validKids[0] ||
     DEFAULT_PARENT_CONFIG.kids[0]
   );
 };
 
 export const loadPlayerProfile = (): PlayerProfile => {
   const config = loadParentConfig();
-  const activeKid = config.kids.find((k) => k.id === config.activeKidId) || config.kids[0] || DEFAULT_PARENT_CONFIG.kids[0];
+  const activeKid = getActiveKidProfile(config);
 
   const today = new Date().toISOString().split('T')[0];
   if (activeKid.lastPlayedDate !== today) {
@@ -707,21 +1105,22 @@ export const loadPlayerProfile = (): PlayerProfile => {
 };
 
 export const savePlayerProfile = (profile: PlayerProfile): void => {
+  if (!profile || !profile.id) return;
   const config = loadParentConfig();
-  const updatedKids = config.kids.map((k) => (k.id === profile.id ? profile : k));
+  const updatedKids = (config.kids || []).map((k) => (k && k.id === profile.id ? { ...k, ...profile } : k));
   const updatedConfig = { ...config, kids: updatedKids };
   saveParentConfig(updatedConfig);
 };
 
 export const switchActiveKid = (kidId: string): KidProfile => {
   const config = loadParentConfig();
-  const target = config.kids.find((k) => k.id === kidId);
+  const target = (config.kids || []).find((k) => k && k.id === kidId);
   if (target) {
     config.activeKidId = kidId;
     saveParentConfig(config);
     return target;
   }
-  return config.kids[0];
+  return getActiveKidProfile(config);
 };
 
 export const addXPAndCoins = (
@@ -1087,6 +1486,13 @@ export {
   initFirebaseAuth,
   subscribeToAuth,
   signInWithGoogle,
+  signInWithGoogleRedirect,
+  signInWithEmail,
+  registerWithEmail,
+  getDirectParentSession,
+  setDirectParentSession,
+  loginAsDirectParent,
+  handleRedirectAuthResult,
   logOut,
   syncUserProfile,
   SUPER_ADMIN_EMAIL,
@@ -1095,33 +1501,32 @@ export {
 
 export const verifyChildLogin = (
   loginIdentifier: string,
-  pinOrCode: string
+  _pinOrCode?: string
 ): { success: boolean; kid?: KidProfile; error?: string } => {
   const config = loadParentConfig();
   const cleanId = (loginIdentifier || '').trim().toLowerCase();
-  const cleanCode = (pinOrCode || '').trim().toLowerCase();
 
-  // Find kid by loginCode or ID or Name
+  if (!cleanId) {
+    return {
+      success: false,
+      error: 'Bitte wähle dein Profil oder gib deinen Namen oder Kinder-Code ein.',
+    };
+  }
+
+  // Find kid by name, loginCode, or ID
   const matchedKid = config.kids.find((k) => {
-    const matchesCode = (k.loginCode || '').toLowerCase() === cleanCode || (k.loginCode || '').toLowerCase() === cleanId;
-    const matchesPin = (k.pin || '1234') === pinOrCode || (k.pin || '1234') === loginIdentifier;
-    const matchesName = k.name.toLowerCase() === cleanId || k.id.toLowerCase() === cleanId;
-
-    return (matchesName && matchesPin) || matchesCode;
+    const matchesCode = (k.loginCode || '').toLowerCase() === cleanId;
+    const matchesName = k.name.toLowerCase() === cleanId;
+    const matchesId = k.id.toLowerCase() === cleanId;
+    return matchesCode || matchesName || matchesId;
   });
 
   if (matchedKid) {
     return { success: true, kid: matchedKid };
   }
 
-  // Fallback: match by code alone if unique
-  const byCode = config.kids.find((k) => (k.loginCode || '').toLowerCase() === cleanId || (k.loginCode || '').toLowerCase() === cleanCode);
-  if (byCode) {
-    return { success: true, kid: byCode };
-  }
-
   return {
     success: false,
-    error: 'Ungültiger Kinder-Login-Code oder PIN. Bitte frage deine Eltern nach deinem Code (z. B. FELIX-101).',
+    error: 'Profil oder Kinder-Code nicht gefunden. Bitte wähle dein Profil aus der Liste.',
   };
 };

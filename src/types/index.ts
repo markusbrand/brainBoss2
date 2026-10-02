@@ -211,7 +211,58 @@ export interface SkinTheme {
   accentGradient: string;
   textAccent: string;
   glowColor: string;
+  glowRgba: string;
   previewColors: string[];
+  bgGradient: string;
+  ambientGlow: string;
+  navBg: string;
+  navBorder: string;
+  cardBg: string;
+  cardBorder: string;
+  badgeBg: string;
+  badgeText: string;
+
+  // Rich Interactive Button & Tab Theme Elements
+  primaryButtonGradient: string;
+  primaryButtonText: string;
+  primaryButtonBorder: string;
+  primaryButtonGlow: string;
+
+  secondaryButtonBg: string;
+  secondaryButtonBorder: string;
+  secondaryButtonText: string;
+
+  tabActiveGradient: string;
+  tabActiveBorder: string;
+  tabActiveGlow: string;
+  tabActiveText: string;
+
+  tabInactiveBg: string;
+  tabInactiveBorder: string;
+  tabInactiveText: string;
+
+  chipActiveBg: string;
+  chipActiveBorder: string;
+  chipActiveText: string;
+
+  heroGradient: string;
+  heroBorder: string;
+
+  modeCardBg: string;
+  modeCardBorder: string;
+  modeCardHoverBorder: string;
+  modeCardHoverGlow: string;
+
+  highlightAccent: string;
+  accentSubtle: string;
+  progressBarGradient: string;
+}
+
+export interface OpenRouterConfig {
+  apiKey?: string;
+  selectedModel: string;
+  provider: 'openrouter' | 'gemini';
+  customModelName?: string;
 }
 
 export interface ScannedMaterialBatch {
@@ -223,10 +274,16 @@ export interface ScannedMaterialBatch {
   schoolGrade: number; // 1 to 8 (1. Schulstufe bis 8. Schulstufe)
   difficulty: number; // 1 to 5
   assignedKidId: string; // 'all' or specific kid ID
-  createdAt: string;
+  targetLanguage?: TargetLearnLanguage;
+  pagesCount?: number;
   questionCount: number;
+  extractedQuestionsCount?: number;
   extractedSummary?: string;
+  aiSummary?: string;
   sourceBookOrChapter?: string;
+  aiModelUsed?: string;
+  aiProviderUsed?: 'openrouter' | 'gemini';
+  createdAt: string;
 }
 
 export interface CustomQuestion extends ProblemItem {
@@ -359,6 +416,7 @@ export interface ChildTest {
   title: string;
   description?: string;
   subject: SubjectArea;
+  topic?: string;
   schoolGrade: number; // 1 to 8
   assignedKidIds: string[];
   timeLimitMinutes: number; // 0 = unlimited, or e.g. 15 mins
@@ -366,6 +424,8 @@ export interface ChildTest {
   questions: ProblemItem[];
   createdAt: string;
   createdBy: string;
+  rewardXp?: number;
+  rewardCoins?: number;
 }
 
 export interface TestSubmission {
@@ -409,6 +469,7 @@ export interface ParentConfig {
   familyName?: string; // e.g. "Familie Brandstätter"
   familyShareCode?: string; // Clean join code e.g. "FAM-8492"
   familyMembers?: FamilyMember[]; // Connected co-parents and tutors
+  openRouter?: OpenRouterConfig; // OpenRouter & AI Vision model configuration
 }
 
 export interface OpenSpecDoc {

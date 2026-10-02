@@ -63,7 +63,8 @@ export const TasksAndTestsTab: React.FC<TasksAndTestsTabProps> = ({
   const [showAddTest, setShowAddTest] = useState(false);
   const [testTitle, setTestTitle] = useState('');
   const [testDesc, setTestDesc] = useState('');
-  const [testSubject, setTestSubject] = useState<SubjectArea>('math');
+  const [testTopic, setTestTopic] = useState('English Book Unit 1');
+  const [testSubject, setTestSubject] = useState<SubjectArea>('languages');
   const [testSchoolGrade, setTestSchoolGrade] = useState<number>(3);
   const [testTimeLimit, setTestTimeLimit] = useState<number>(15);
   const [testDueDate, setTestDueDate] = useState<string>(
@@ -197,6 +198,7 @@ export const TasksAndTestsTab: React.FC<TasksAndTestsTabProps> = ({
       title: testTitle.trim(),
       description: testDesc.trim() || undefined,
       subject: testSubject,
+      topic: testTopic.trim() || undefined,
       schoolGrade: Number(testSchoolGrade) || 3,
       assignedKidIds: testAssignedKid === 'all' ? ['all'] : [testAssignedKid],
       timeLimitMinutes: Number(testTimeLimit) || 15,
@@ -213,6 +215,7 @@ export const TasksAndTestsTab: React.FC<TasksAndTestsTabProps> = ({
     // Reset Form
     setTestTitle('');
     setTestDesc('');
+    setTestTopic('English Book Unit 1');
     setShowAddTest(false);
   };
 
@@ -360,12 +363,14 @@ export const TasksAndTestsTab: React.FC<TasksAndTestsTabProps> = ({
                     onChange={(e) => setTaskAssignedKid(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="all">Alle Kinder ({config.kids.length})</option>
-                    {config.kids.map((k) => (
-                      <option key={k.id} value={k.id}>
-                        {k.avatar} {k.name} ({k.schoolClass || `${k.schoolGrade || 2}. Schulstufe`})
-                      </option>
-                    ))}
+                    <option value="all">Alle Kinder ({config?.kids?.length || 0})</option>
+                    {(config?.kids || [])
+                      .filter((k): k is KidProfile => Boolean(k && k.id && k.name))
+                      .map((k) => (
+                        <option key={k.id} value={k.id}>
+                          {k.avatar} {k.name} ({k.schoolClass || `${k.schoolGrade || 2}. Schulstufe`})
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -430,7 +435,7 @@ export const TasksAndTestsTab: React.FC<TasksAndTestsTabProps> = ({
           ) : (
             <div className="space-y-2.5">
               {tasksList.map((task) => {
-                const assignedKidObj = config.kids.find((k) => k.id === task.assignedKidId);
+                const assignedKidObj = (config?.kids || []).find((k) => k && k.id === task.assignedKidId);
                 const isCompleted = task.status === 'completed' || task.currentCount >= task.targetCount;
                 const progressPct = Math.round(
                   Math.min(100, (task.currentCount / (task.targetCount || 1)) * 100)
@@ -569,7 +574,13 @@ export const TasksAndTestsTab: React.FC<TasksAndTestsTabProps> = ({
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Fachgebiet</label>
                   <select
                     value={testSubject}
-                    onChange={(e) => setTestSubject(e.target.value as SubjectArea)}
+                    onChange={(e) => {
+                      const subj = e.target.value as SubjectArea;
+                      setTestSubject(subj);
+                      if (subj === 'languages' && !testTopic) {
+                        setTestTopic('English Book Unit 1');
+                      }
+                    }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
                     <option value="math">Mathematik</option>
@@ -578,6 +589,20 @@ export const TasksAndTestsTab: React.FC<TasksAndTestsTabProps> = ({
                     <option value="art">Kunst / Kultur</option>
                     <option value="languages">Englisch / Sprachen</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-amber-300 mb-1">
+                    🎯 Fokus-Thema (Name in Akademie) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="z. B. English Book Unit 1"
+                    value={testTopic}
+                    onChange={(e) => setTestTopic(e.target.value)}
+                    className="w-full bg-slate-950 border border-amber-500/50 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-amber-400 font-semibold"
+                  />
                 </div>
 
                 <div>
@@ -600,11 +625,13 @@ export const TasksAndTestsTab: React.FC<TasksAndTestsTabProps> = ({
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
                     <option value="all">Alle Kinder</option>
-                    {config.kids.map((k) => (
-                      <option key={k.id} value={k.id}>
-                        {k.avatar} {k.name} ({k.schoolClass || `${k.schoolGrade || 2}. Schulstufe`})
-                      </option>
-                    ))}
+                    {(config?.kids || [])
+                      .filter((k): k is KidProfile => Boolean(k && k.id && k.name))
+                      .map((k) => (
+                        <option key={k.id} value={k.id}>
+                          {k.avatar} {k.name} ({k.schoolClass || `${k.schoolGrade || 2}. Schulstufe`})
+                        </option>
+                      ))}
                   </select>
                 </div>
               </div>

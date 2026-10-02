@@ -6,6 +6,7 @@ import {
   Trash2,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   BookOpen,
   User,
   Users,
@@ -13,6 +14,7 @@ import {
   GraduationCap,
   HelpCircle,
   Eye,
+  EyeOff,
   RefreshCw,
   FileText,
   ShieldCheck,
@@ -21,36 +23,145 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Volume2,
+  FileCheck,
+  Award,
+  Key,
+  Cpu,
+  Globe,
+  Settings2,
+  ExternalLink,
+  Languages,
+  BookMarked,
+  Target,
 } from 'lucide-react';
-import { CustomQuestion, KidProfile, ParentConfig, ScannedMaterialBatch, SubjectArea, TargetLearnLanguage } from '../../types';
+import { ChildTask, ChildTest, CustomQuestion, KidProfile, ParentConfig, ScannedMaterialBatch, SubjectArea, TargetLearnLanguage } from '../../types';
 import {
   addScannedBatchWithQuestions,
   deleteScannedBatch,
   loadCustomQuestions,
   loadScannedBatches,
   updateScannedBatchAssignment,
+  saveChildTest,
+  saveChildTask,
+  saveParentConfig,
+  loadParentConfig,
 } from '../../utils/storage';
 import { soundFx } from '../../utils/audio';
 import { useLanguage } from '../../context/LanguageContext';
-import { getLanguageDisplayName, getLanguageFlag } from '../../utils/subjectEngines';
+import { getLanguageDisplayName, getLanguageFlag, speakWord } from '../../utils/subjectEngines';
 
 interface SchoolbookScannerTabProps {
   config: ParentConfig;
   onConfigChange?: (updatedConfig: ParentConfig) => void;
 }
 
+interface CuratedModelOption {
+  id: string;
+  name: string;
+  badge: string;
+  badgeColor: string;
+  descriptionDe: string;
+  descriptionEn: string;
+  recommended?: boolean;
+}
+
+const CURATED_OPENROUTER_MODELS: CuratedModelOption[] = [
+  {
+    id: 'google/gemini-2.0-flash-001',
+    name: 'Gemini 2.0 Flash',
+    badge: '⭐ Standard (Schnell & Günstig)',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    descriptionDe: 'Hervorragende Multimodal-Vision, extrem schnell bei Vokabeln & Tabellen, sehr niedrige Tokenkosten.',
+    descriptionEn: 'High-speed multimodal OCR, great for school vocabularies at minimal cost.',
+    recommended: true,
+  },
+  {
+    id: 'anthropic/claude-3.5-sonnet',
+    name: 'Claude 3.5 Sonnet',
+    badge: '👑 Beste Qualität & Layout',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    descriptionDe: 'Goldstandard für komplexe Schulbuch-Layouts, handschriftliche Notizen und feine deutsch-englische Vokabelnuancen.',
+    descriptionEn: 'Gold standard for dense layouts, handwriting, and English/German bilingual nuances.',
+    recommended: true,
+  },
+  {
+    id: 'openai/gpt-4o',
+    name: 'GPT-4o',
+    badge: '🌟 Spitzenklasse Mehrsprachig',
+    badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+    descriptionDe: 'Starke Texterkennung und präzise Lückentext- und Grammatik-Generierung.',
+    descriptionEn: 'Top-tier multimodal accuracy for exercises, sentence completion, and grammar.',
+  },
+  {
+    id: 'openai/gpt-4o-mini',
+    name: 'GPT-4o Mini',
+    badge: '💡 Alltags-Scanner',
+    badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+    descriptionDe: 'Ausgezeichnetes Preis-Leistungs-Verhältnis für alltägliche Arbeitsblätter.',
+    descriptionEn: 'Budget-friendly vision scanner for everyday school assignments.',
+  },
+  {
+    id: 'qwen/qwen-2.5-vl-72b-instruct',
+    name: 'Qwen 2.5 VL 72B',
+    badge: '🔬 Benchmark-Leader',
+    badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+    descriptionDe: 'Führendes Open-Weights-Visionmodell für Buchseiten, Diagramme und Tabellen.',
+    descriptionEn: 'High-performance vision model excelling at complex document layouts.',
+  },
+  {
+    id: 'meta-llama/llama-3.2-90b-vision-instruct',
+    name: 'Llama 3.2 90B Vision',
+    badge: '🦙 Open Weights Power',
+    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+    descriptionDe: 'Metas stärkstes offenes Multimodal-Modell via OpenRouter.',
+    descriptionEn: 'Meta open weights multimodal flagship.',
+  },
+  {
+    id: 'custom',
+    name: 'Eigenes Modell (Custom Slug)',
+    badge: '⚙️ Beliebiges Modell',
+    badgeColor: 'bg-slate-700 text-slate-300 border-slate-600',
+    descriptionDe: 'Gib einen beliebigen OpenRouter-Modellbezeichner ein (z.B. mistralai/pixtral-large-2411).',
+    descriptionEn: 'Enter any custom OpenRouter model slug.',
+  },
+];
+
 export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
   config,
+  onConfigChange,
 }) => {
   const { language } = useLanguage();
   const isDe = language === 'de';
 
+  // OpenRouter & AI Provider state
+  const [aiProvider, setAiProvider] = useState<'openrouter' | 'gemini'>(
+    config.openRouter?.provider || 'openrouter'
+  );
+  const [openRouterModel, setOpenRouterModel] = useState<string>(
+    config.openRouter?.selectedModel || 'google/gemini-2.0-flash-001'
+  );
+  const [openRouterApiKey, setOpenRouterApiKey] = useState<string>(
+    config.openRouter?.apiKey || ''
+  );
+  const [customModelInput, setCustomModelInput] = useState<string>(
+    config.openRouter?.customModelName || ''
+  );
+  const [showApiKey, setShowApiKey] = useState<boolean>(false);
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState<boolean>(false);
+  const [testingConnection, setTestingConnection] = useState<boolean>(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
   // Uploaded images in memory (ephemeral, deleted immediately after processing)
   const [selectedImages, setSelectedImages] = useState<Array<{ id: string; dataUrl: string; name: string }>>([]);
+  const [selectedCategory, setSelectedCategory] = useState<SubjectArea>('languages');
+  const [autoCreateTest, setAutoCreateTest] = useState<boolean>(true);
+  const [autoCreateTask, setAutoCreateTask] = useState<boolean>(true);
   const [bookTitle, setBookTitle] = useState<string>('');
-  const [selectedKidId, setSelectedKidId] = useState<string>(config.activeKidId || (config.kids[0]?.id ?? 'all'));
+  const [focusTopic, setFocusTopic] = useState<string>('English Book Unit 1');
+  const [selectedKidId, setSelectedKidId] = useState<string>(config?.activeKidId || (config?.kids?.[0]?.id ?? 'all'));
   const [targetSchoolGrade, setTargetSchoolGrade] = useState<number>(() => {
-    const activeKid = config.kids.find((k) => k.id === config.activeKidId) || config.kids[0];
+    const activeKid = (config?.kids || []).find((k) => k && k.id === config?.activeKidId) || config?.kids?.[0];
     return activeKid?.schoolGrade || (activeKid?.gradeLevel === 'high_school' ? 5 : 3);
   });
   const [targetLanguage, setTargetLanguage] = useState<TargetLearnLanguage>('en');
@@ -69,6 +180,70 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Save AI Config updates
+  const handleUpdateAiConfig = (
+    newProvider: 'openrouter' | 'gemini',
+    newModel: string,
+    newApiKey: string,
+    newCustomModel?: string
+  ) => {
+    setAiProvider(newProvider);
+    setOpenRouterModel(newModel);
+    setOpenRouterApiKey(newApiKey);
+    if (newCustomModel !== undefined) setCustomModelInput(newCustomModel);
+
+    const updatedConfig: ParentConfig = {
+      ...config,
+      openRouter: {
+        provider: newProvider,
+        selectedModel: newModel,
+        apiKey: newApiKey,
+        customModelName: newCustomModel !== undefined ? newCustomModel : customModelInput,
+      },
+    };
+    saveParentConfig(updatedConfig);
+    onConfigChange?.(updatedConfig);
+  };
+
+  // Test OpenRouter Connection
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const effectiveModel = openRouterModel === 'custom' ? customModelInput.trim() : openRouterModel;
+      const res = await fetch('/api/openrouter/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: openRouterApiKey.trim(),
+          model: effectiveModel || 'google/gemini-2.0-flash-001',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult({
+          success: true,
+          message: data.message || (isDe ? 'Verbindung zu OpenRouter erfolgreich!' : 'OpenRouter connection successful!'),
+        });
+        soundFx.playPowerUp();
+      } else {
+        setTestResult({
+          success: false,
+          message: data.error || (isDe ? 'Verbindung fehlgeschlagen.' : 'Connection failed.'),
+        });
+        soundFx.playWrong();
+      }
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        message: err.message || (isDe ? 'Verbindungsfehler aufgetreten' : 'Connection error occurred'),
+      });
+      soundFx.playWrong();
+    } finally {
+      setTestingConnection(false);
+    }
+  };
 
   // Sync school grade when selected kid changes
   const handleKidSelect = (kidId: string) => {
@@ -123,7 +298,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
     soundFx.playPop();
   };
 
-  // Process Images with AI Vision Endpoint
+  // Process Images with OpenRouter / Gemini AI Vision Endpoint
   const handleProcessScan = async () => {
     if (selectedImages.length === 0) {
       setErrorMessage(isDe ? 'Bitte mindestens ein Bild aufnehmen oder auswählen.' : 'Please take or select at least one photo.');
@@ -132,7 +307,14 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
 
     setIsProcessing(true);
     setErrorMessage(null);
-    setStatusMessage(isDe ? 'KI analysiert Schulbuchseite & extrahiert Aufgaben...' : 'AI is analyzing textbook page & extracting questions...');
+    const effectiveModel = openRouterModel === 'custom' ? customModelInput.trim() : openRouterModel;
+    const modelDisplayName = aiProvider === 'openrouter' ? effectiveModel.split('/').pop() : 'Gemini 3.8 Flash';
+
+    setStatusMessage(
+      isDe
+        ? `KI (${modelDisplayName}) analysiert Schulbuchseite & extrahiert Aufgaben für 1. Test...`
+        : `AI (${modelDisplayName}) analyzing textbook page & extracting questions...`
+    );
 
     try {
       const response = await fetch('/api/gemini/scan-schoolbook', {
@@ -140,12 +322,17 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           images: selectedImages.map((img) => img.dataUrl),
+          category: selectedCategory,
+          subject: selectedCategory,
           bookTitle: bookTitle.trim(),
           targetSchoolGrade,
           assignedKidId: selectedKidId,
           targetLanguage,
           notes: extraNotes.trim(),
           language,
+          provider: aiProvider,
+          openRouterApiKey: openRouterApiKey.trim(),
+          openRouterModel: effectiveModel,
         }),
       });
 
@@ -160,26 +347,90 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
         throw new Error('No questions could be extracted.');
       }
 
+      const finalTopic = focusTopic.trim() || bookTitle.trim() || (selectedCategory === 'languages' ? 'English Book Unit 1' : 'Schulbuch-Thema 1');
+      const finalTitle = bookTitle.trim() || finalTopic;
+
+      const formattedQuestions: CustomQuestion[] = extractedQuestions.map((q, idx) => ({
+        ...q,
+        id: q.id || `scan_q_${Date.now()}_${idx}`,
+        topic: finalTopic,
+        subject: selectedCategory,
+        targetLanguage: selectedCategory === 'languages' ? targetLanguage : undefined,
+        assignedKidId: selectedKidId,
+        scanBatchTitle: finalTitle,
+        source: 'schoolbook_scan' as const,
+        isCustom: true,
+      }));
+
       const newBatch: ScannedMaterialBatch = {
         id: data.batchId || `scan-${Date.now()}`,
-        title: data.batchTitle || bookTitle || (isDe ? `Schulbuch-Scan (${new Date().toLocaleDateString('de-DE')})` : `Book Scan (${new Date().toLocaleDateString()})`),
+        title: finalTitle,
+        topic: finalTopic,
         createdAt: new Date().toISOString(),
         assignedKidId: selectedKidId,
-        subject: (data.detectedSubject as SubjectArea) || 'math',
-        topic: data.detectedTopic || 'general_scan',
+        subject: (data.detectedSubject as SubjectArea) || selectedCategory,
         gradeLevel: (data.schoolGrade || targetSchoolGrade) > 4 ? 'high_school' : 'primary',
         schoolGrade: data.schoolGrade || targetSchoolGrade,
         difficulty: targetSchoolGrade <= 2 ? 1 : targetSchoolGrade === 3 ? 2 : targetSchoolGrade <= 5 ? 3 : targetSchoolGrade <= 7 ? 4 : 5,
-        questionCount: extractedQuestions.length,
+        questionCount: formattedQuestions.length,
+        extractedQuestionsCount: formattedQuestions.length,
         extractedSummary: data.extractedSummary,
-        sourceBookOrChapter: bookTitle || undefined,
+        sourceBookOrChapter: finalTitle,
+        aiModelUsed: data.aiModelUsed || effectiveModel,
+        aiProviderUsed: (data.aiProviderUsed as any) || aiProvider,
       };
 
       // Save batch & append custom questions
-      const { batches: updatedBatches } = addScannedBatchWithQuestions(newBatch, extractedQuestions);
+      const { batches: updatedBatches } = addScannedBatchWithQuestions(newBatch, formattedQuestions);
       setBatches(updatedBatches);
       setLastProcessedBatch(newBatch);
       setExpandedBatchId(newBatch.id);
+
+      // Auto-create official ChildTest if selected
+      if (autoCreateTest) {
+        const targetKids = selectedKidId === 'all' ? config.kids.map((k) => k.id) : [selectedKidId];
+        const newTest: ChildTest = {
+          id: `test-scan-${Date.now()}`,
+          title: `${finalTopic} (1. Schularbeit / Quiz)`,
+          description: data.extractedSummary || (isDe ? `Offizieller Schultest zu ${finalTopic}` : `School test for ${finalTopic}`),
+          subject: newBatch.subject,
+          topic: finalTopic,
+          schoolGrade: newBatch.schoolGrade,
+          assignedKidIds: targetKids,
+          timeLimitMinutes: Math.max(10, Math.min(30, formattedQuestions.length * 3)),
+          questions: formattedQuestions,
+          createdAt: new Date().toISOString(),
+          createdBy: isDe ? `Scanner (${newBatch.aiModelUsed?.split('/').pop() || 'KI'})` : `Scanner (${newBatch.aiModelUsed?.split('/').pop() || 'AI'})`,
+          rewardXp: 150,
+          rewardCoins: 75,
+        };
+        saveChildTest(newTest);
+      }
+
+      // Auto-create rewarded ChildTask if selected
+      if (autoCreateTask) {
+        const newTask: ChildTask = {
+          id: `task-scan-${Date.now()}`,
+          title: `${finalTopic}: Vokabel- & Aufgaben-Training`,
+          description: isDe ? `Löse alle ${formattedQuestions.length} Aufgaben aus ${finalTopic} für Belohnungen!` : `Solve all ${formattedQuestions.length} exercises from ${finalTopic}!`,
+          subject: newBatch.subject,
+          topic: finalTopic,
+          targetCount: formattedQuestions.length,
+          currentCount: 0,
+          assignedKidId: selectedKidId,
+          dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0],
+          status: 'assigned',
+          rewardXp: 100,
+          rewardCoins: 50,
+          createdAt: new Date().toISOString(),
+        };
+        saveChildTask(newTask);
+      }
+
+      // Trigger config refresh if callback provided
+      if (onConfigChange) {
+        onConfigChange(loadParentConfig());
+      }
 
       // MANDATORY PRIVACY: Immediately delete image buffers from client memory
       setSelectedImages([]);
@@ -188,16 +439,16 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
 
       setStatusMessage(
         isDe
-          ? `✅ ${extractedQuestions.length} Aufgaben erfolgreich generiert & kategorisiert! Die Fotos wurden aus Datenschutzgründen gelöscht.`
-          : `✅ ${extractedQuestions.length} questions successfully generated & assigned! Photos were securely deleted.`
+          ? `✅ ${extractedQuestions.length} Aufgaben${autoCreateTest ? ' & 1 Schultest' : ''}${autoCreateTask ? ' & 1 Lernaufgabe' : ''} mit Modell ${newBatch.aiModelUsed?.split('/').pop() || 'KI'} erfolgreich generiert!`
+          : `✅ ${extractedQuestions.length} questions${autoCreateTest ? ' & 1 Quiz-Test' : ''}${autoCreateTask ? ' & 1 Reward Task' : ''} created with ${newBatch.aiModelUsed?.split('/').pop() || 'AI'}!`
       );
       soundFx.playPowerUp();
     } catch (err: any) {
       console.error('Scan error:', err);
       setErrorMessage(
         isDe
-          ? 'Fehler beim Analysieren des Fotos. Bitte stelle sicher, dass der Text gut lesbar ist.'
-          : 'Error analyzing the image. Please make sure the text is clearly legible.'
+          ? 'Fehler beim Analysieren des Fotos. Bitte stelle sicher, dass der Text gut lesbar ist oder überprüfe den OpenRouter-Schlüssel.'
+          : 'Error analyzing the image. Please make sure the text is clearly legible or check your OpenRouter API key.'
       );
       soundFx.playWrong();
     } finally {
@@ -248,11 +499,268 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
           </div>
           <p className="text-xs text-slate-300 max-w-2xl">
             {isDe
-              ? 'Fotografiere Buchseiten, Tests oder Hausaufgabenhefte mit dem Handy ab oder lade Scans hoch. Die KI erstellt automatisch interaktive Übungen und ordnet sie dem gewählten Kind & Schulstufe zu. Nach dem Prozessieren werden die Fotos sofort gelöscht.'
-              : 'Take photos of textbooks, tests, or homework sheets. AI extracts exercises, categorizes them automatically, and assigns them to your child. Images are securely deleted after processing.'}
+              ? 'Fotografiere Buchseiten, Tests oder Hausaufgabenhefte ab. Die KI digitalisiert Übungen, Vokabeln und Grammatik gezielt für deutschsprachige Kinder (z.B. Vorbereitung auf die 1. Schularbeit in Englisch). Nach dem Prozessieren werden alle Fotos sofort gelöscht.'
+              : 'Take photos of textbooks, tests, or homework sheets. AI extracts exercises, categorizes them, and assigns them to your child. Images are securely deleted after processing.'}
           </p>
         </div>
+
+        {/* Quick AI Provider Status Chip */}
+        <button
+          type="button"
+          onClick={() => setIsAiSettingsOpen((prev) => !prev)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 border border-indigo-500/40 hover:border-indigo-400 text-xs font-bold text-indigo-200 hover:text-white transition-all shadow-md shrink-0 cursor-pointer"
+        >
+          <Cpu className="w-4 h-4 text-indigo-400" />
+          <span>
+            {aiProvider === 'openrouter'
+              ? `OpenRouter: ${(openRouterModel === 'custom' ? customModelInput : openRouterModel).split('/').pop() || 'gemini-2.0-flash'}`
+              : 'Google Gemini 3.8 Flash'}
+          </span>
+          <Settings2 className="w-3.5 h-3.5 text-slate-400 ml-1" />
+        </button>
       </div>
+
+      {/* AI ENGINE & OPENROUTER CONFIGURATION CARD */}
+      <div className="p-5 rounded-2xl bg-slate-900/90 border border-indigo-500/30 space-y-4">
+        <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsAiSettingsOpen((prev) => !prev)}>
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <Globe className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white">
+                  {isDe ? '🤖 KI-Vision Modell & OpenRouter Konfiguration' : '🤖 AI Vision Model & OpenRouter Setup'}
+                </h3>
+                <span className="px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-500/40 text-[10px] font-mono font-bold text-indigo-300">
+                  {aiProvider === 'openrouter' ? 'OpenRouter Active' : 'Gemini AI Studio'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                {isDe
+                  ? 'Wähle dein bevorzugtes KI-Vision-Modell (z.B. Gemini 2.0 Flash oder Claude 3.5 Sonnet) für optimale Erkennung von Schulbüchern.'
+                  : 'Select your preferred AI vision model (e.g. Gemini 2.0 Flash or Claude 3.5 Sonnet) for textbook recognition.'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition-colors"
+          >
+            {isAiSettingsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {isAiSettingsOpen && (
+          <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in duration-200">
+            {/* Provider Switcher */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-slate-300">{isDe ? 'KI-Provider:' : 'AI Provider:'}</span>
+              <div className="grid grid-cols-2 gap-2 max-w-sm">
+                <button
+                  type="button"
+                  onClick={() => handleUpdateAiConfig('openrouter', openRouterModel, openRouterApiKey)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    aiProvider === 'openrouter'
+                      ? 'bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-900/50'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>OpenRouter (Empfohlen)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateAiConfig('gemini', openRouterModel, openRouterApiKey)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    aiProvider === 'gemini'
+                      ? 'bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-900/50'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Gemini AI Studio</span>
+                </button>
+              </div>
+            </div>
+
+            {aiProvider === 'openrouter' && (
+              <div className="space-y-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                {/* Model Selector Cards */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                      <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>{isDe ? 'Dediziertes KI-Modell auswählen:' : 'Select Dedicated Model:'}</span>
+                    </label>
+                    <span className="text-[10px] text-indigo-400 font-mono">
+                      {isDe ? 'Standard: Gemini 2.0 Flash • Empfohlen: Claude 3.5 Sonnet' : 'Default: Gemini 2.0 Flash • Recommended: Claude 3.5 Sonnet'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {CURATED_OPENROUTER_MODELS.map((m) => {
+                      const isSelected = openRouterModel === m.id;
+                      return (
+                        <div
+                          key={m.id}
+                          onClick={() => handleUpdateAiConfig('openrouter', m.id, openRouterApiKey)}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                            isSelected
+                              ? 'bg-indigo-950/70 border-indigo-500 shadow-md shadow-indigo-950/40 ring-1 ring-indigo-400'
+                              : 'bg-slate-900/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-1 mb-1">
+                              <span className="text-xs font-bold text-white">{m.name}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${m.badgeColor}`}>
+                                {m.badge}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-relaxed">
+                              {isDe ? m.descriptionDe : m.descriptionEn}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 pt-1 border-t border-indigo-900/60">
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span>{isDe ? 'Ausgewähltes Modell' : 'Active Model'}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom Model Input if 'custom' is selected */}
+                  {openRouterModel === 'custom' && (
+                    <div className="pt-2 space-y-1">
+                      <label className="text-xs font-bold text-slate-300">
+                        {isDe ? 'OpenRouter Modell-Slug eintragen:' : 'Enter OpenRouter Model Slug:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={customModelInput}
+                        onChange={(e) => handleUpdateAiConfig('openrouter', 'custom', openRouterApiKey, e.target.value)}
+                        placeholder="z.B. mistralai/pixtral-large-2411 oder deepseek/deepseek-chat"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-indigo-500 font-mono"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* OpenRouter API Key Input */}
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{isDe ? 'OpenRouter API-Schlüssel (optional / server-seitig):' : 'OpenRouter API Key:'}</span>
+                    </label>
+                    <a
+                      href="https://openrouter.ai/keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                    >
+                      <span>{isDe ? 'Schlüssel auf openrouter.ai erstellen' : 'Get OpenRouter Key'}</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type={showApiKey ? 'text' : 'password'}
+                        value={openRouterApiKey}
+                        onChange={(e) => handleUpdateAiConfig('openrouter', openRouterModel, e.target.value)}
+                        placeholder="sk-or-v1-..."
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-indigo-500 font-mono pr-9"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey((prev) => !prev)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                        title={showApiKey ? 'Hide' : 'Show'}
+                      >
+                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleTestConnection}
+                      disabled={testingConnection}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      {testingConnection ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-amber-400" />}
+                      <span>{isDe ? 'Verbindung testen' : 'Test Connection'}</span>
+                    </button>
+                  </div>
+
+                  {testResult && (
+                    <div
+                      className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
+                        testResult.success
+                          ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-200'
+                          : 'bg-red-950/70 border-red-500/40 text-red-200'
+                      }`}
+                    >
+                      {testResult.success ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                      )}
+                      <span>{testResult.message}</span>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-slate-400">
+                    💡 {isDe
+                      ? 'Hinweis: Wenn auf dem Server bereits ein OPENROUTER_API_KEY in der Umgebung hinterlegt ist, kann das Feld frei gelassen werden. Andernfalls füge hier deinen Schlüssel ein (wird sicher im Elternprofil gespeichert).'
+                      : 'Note: If OPENROUTER_API_KEY is configured in server environment, you can leave this blank.'}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* PEDAGOGICAL BANNER: GERMAN NATIVE LEARNERS ENGLISH 1ST TEST PREPARATION */}
+      {selectedCategory === 'languages' && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/60 via-orange-950/40 to-slate-900 border border-amber-500/40 space-y-2">
+          <div className="flex items-center gap-2">
+            <Languages className="w-4 h-4 text-amber-400" />
+            <h3 className="text-xs font-black text-amber-200 uppercase tracking-wide">
+              {isDe ? '🇩🇪 ➡️ 🇬🇧 Didaktischer Fokus: Englisch für deutschsprachige Kinder (1. Schularbeit / Test)' : 'English as Foreign Language for German Native Speakers'}
+            </h3>
+          </div>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            {isDe
+              ? 'Die KI extrahiert gezielt die im Schulbuch (z.B. More! 1, Easy 1, Red Line) gezeigten Übungen für den ersten großen Schultest:'
+              : 'The AI extracts targeted curriculum exercises from your textbook for the first official school test:'}
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] font-medium text-slate-300 pt-1">
+            <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center gap-1.5">
+              <span>🎒</span>
+              <span>{isDe ? 'Schulsachen & Zahlen 1-20' : 'School objects & numbers'}</span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center gap-1.5">
+              <span>✍️</span>
+              <span>{isDe ? 'Artikel (a vs. an)' : 'Articles (a vs an)'}</span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center gap-1.5">
+              <span>💬</span>
+              <span>{isDe ? 'Verb ‚to be‘ (am/is/are)' : 'Verb to be (am/is/are)'}</span>
+            </div>
+            <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center gap-1.5">
+              <span>🔊</span>
+              <span>{isDe ? 'Native Audio-Aussprache' : 'Native audio pronunciation'}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Scanner Card */}
       <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-6">
@@ -272,7 +780,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
               <button
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
-                className="p-4 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs flex flex-col items-center justify-center gap-2 shadow-lg shadow-indigo-950/40 border border-indigo-400/30 transition-transform active:scale-95"
+                className="p-4 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs flex flex-col items-center justify-center gap-2 shadow-lg shadow-indigo-950/40 border border-indigo-400/30 transition-transform active:scale-95 cursor-pointer"
               >
                 <Camera className="w-6 h-6 text-indigo-200" />
                 <span>{isDe ? 'Kamera öffnen (Handy)' : 'Open Camera (Mobile)'}</span>
@@ -282,7 +790,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="p-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs flex flex-col items-center justify-center gap-2 border border-slate-700 transition-colors active:scale-95"
+                className="p-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs flex flex-col items-center justify-center gap-2 border border-slate-700 transition-colors active:scale-95 cursor-pointer"
               >
                 <Upload className="w-6 h-6 text-slate-400" />
                 <span>{isDe ? 'Dateien wählen / Scan' : 'Choose Files / Scan'}</span>
@@ -345,7 +853,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
                         <button
                           type="button"
                           onClick={() => removeImage(img.id)}
-                          className="p-1.5 rounded-full bg-red-600 text-white hover:bg-red-500 shadow-md"
+                          className="p-1.5 rounded-full bg-red-600 text-white hover:bg-red-500 shadow-md cursor-pointer"
                           title={isDe ? 'Entfernen' : 'Remove'}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -364,8 +872,49 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
           {/* RIGHT: Target Assignment & Metadata (7 cols) */}
           <div className="lg:col-span-7 space-y-4">
             <label className="text-xs font-black uppercase tracking-wider text-slate-300">
-              {isDe ? '2. Kind & Schulstufe zuweisen' : '2. Assign to Child & Grade'}
+              {isDe ? '2. Fachbereich, Kind & Schulstufe wählen' : '2. Choose Subject, Child & Grade'}
             </label>
+
+            {/* Subject Area Category Selector */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                <span>{isDe ? 'Fachbereich des Buchs / Hefts:' : 'Subject Category:'}</span>
+                <span className="text-[10px] text-indigo-400 font-mono">
+                  {selectedCategory === 'languages' ? '🇬🇧 English / Language Academy' : selectedCategory === 'math' ? '🔢 Math' : selectedCategory === 'nature' ? '🌿 Science' : selectedCategory === 'geography' ? '🌍 Geography' : '🎨 Art'}
+                </span>
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {[
+                  { id: 'languages' as SubjectArea, label: isDe ? 'Englisch / Sprachen' : 'English / Languages', icon: '🇬🇧', color: 'from-amber-600 to-orange-600' },
+                  { id: 'math' as SubjectArea, label: isDe ? 'Mathematik' : 'Math', icon: '🔢', color: 'from-blue-600 to-cyan-600' },
+                  { id: 'nature' as SubjectArea, label: isDe ? 'Natur & Wissen' : 'Nature & Science', icon: '🌿', color: 'from-emerald-600 to-teal-600' },
+                  { id: 'geography' as SubjectArea, label: isDe ? 'Geographie' : 'Geography', icon: '🌍', color: 'from-sky-600 to-indigo-600' },
+                  { id: 'art' as SubjectArea, label: isDe ? 'Kunst & Musik' : 'Art & Music', icon: '🎨', color: 'from-purple-600 to-pink-600' },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(cat.id);
+                      soundFx.playPop();
+                      if (cat.id === 'languages') setFocusTopic('English Book Unit 1');
+                      else if (cat.id === 'math') setFocusTopic('Mathe Kapitel 1');
+                      else if (cat.id === 'nature') setFocusTopic('Natur & Wissen Thema 1');
+                      else if (cat.id === 'geography') setFocusTopic('Geographie Thema 1');
+                      else if (cat.id === 'art') setFocusTopic('Kunst & Musik Thema 1');
+                    }}
+                    className={`p-2.5 rounded-xl border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                      selectedCategory === cat.id
+                        ? `bg-gradient-to-br ${cat.color} text-white border-white/40 shadow-md scale-[1.02]`
+                        : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-base">{cat.icon}</span>
+                    <span className="text-[10px] font-bold line-clamp-1">{cat.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Child Selection */}
@@ -380,15 +929,17 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 >
                   <option value="all">{isDe ? '👥 Alle Kinder (Gemeinsamer Pool)' : '👥 All Children (Shared Pool)'}</option>
-                  {config.kids.map((kid) => (
-                    <option key={kid.id} value={kid.id}>
-                      {kid.avatar} {kid.name} ({kid.schoolGrade || (kid.gradeLevel === 'high_school' ? 5 : 2)}. Schulstufe)
-                    </option>
-                  ))}
+                  {(config?.kids || [])
+                    .filter((kid): kid is KidProfile => Boolean(kid && kid.id && kid.name))
+                    .map((kid) => (
+                      <option key={kid.id} value={kid.id}>
+                        {kid.avatar} {kid.name} ({kid.schoolGrade || (kid.gradeLevel === 'high_school' ? 5 : 2)}. Schulstufe)
+                      </option>
+                    ))}
                 </select>
                 <p className="text-[10px] text-slate-400">
                   {isDe
-                    ? 'Nur das zugewiesene Kind bekommt diese Aufgaben in den Quests.'
+                    ? 'Nur das zugewiesene Kind bekommt diese Aufgaben in seinen Quests & Tests.'
                     : 'Only the assigned child will receive these problems in quests.'}
                 </p>
               </div>
@@ -423,20 +974,68 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
               </div>
             </div>
 
-            {/* Book / Sheet Title (Optional) */}
+            {/* Focus Topic Name (Fokus-Thema) - Visible to child in Academy */}
+            <div className="space-y-2 p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/50">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>{isDe ? 'Fokus-Thema (Name in der Akademie):' : 'Focus Topic Name:'}</span>
+                </label>
+                <span className="text-[10px] text-amber-300 font-bold px-2 py-0.5 rounded-full bg-amber-950/70 border border-amber-500/40">
+                  {isDe ? '🎯 Genau so sieht es das Kind' : '🎯 Visible in Child Academy'}
+                </span>
+              </div>
+              <input
+                type="text"
+                value={focusTopic}
+                onChange={(e) => setFocusTopic(e.target.value)}
+                placeholder={selectedCategory === 'languages' ? 'English Book Unit 1' : 'z.B. Thema 1'}
+                className="w-full bg-slate-950 border border-indigo-500/60 rounded-xl px-3 py-2 text-xs font-bold text-white placeholder-slate-500 focus:ring-1 focus:ring-indigo-400"
+              />
+              <p className="text-[10px] text-slate-300">
+                {isDe
+                  ? '💡 Unter diesem Fokus-Themen-Namen (z.B. „English Book Unit 1“) findet das Kind den Schultest & die Quests direkt in der Sprachen-Akademie!'
+                  : '💡 The child will find the quiz and practice questions directly under this topic name in their Academy.'}
+              </p>
+              {/* Quick Topic Presets */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                <span className="text-[10px] text-slate-400">{isDe ? 'Schnellauswahl:' : 'Presets:'}</span>
+                {(selectedCategory === 'languages'
+                  ? ['English Book Unit 1', 'English Book Unit 2', 'Vocabulary Test 1', 'Classroom & School', 'Grammar: to be & articles']
+                  : selectedCategory === 'math'
+                  ? ['Mathe Kapitel 1', 'Bruchrechnen S. 42', 'Schularbeit Vorbereitung', 'Kopfrechnen Training']
+                  : ['Thema 1', 'Kapitel 1', 'Schularbeit Vorbereitung']
+                ).map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setFocusTopic(preset)}
+                    className={`px-2 py-0.5 rounded-lg text-[10px] border transition-colors cursor-pointer ${
+                      focusTopic === preset
+                        ? 'bg-indigo-600 text-white border-indigo-400 font-bold'
+                        : 'bg-slate-900 border-slate-700 hover:border-indigo-400 text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Book / Sheet Title */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                 <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
-                <span>{isDe ? 'Titel / Heftbezeichnung (optional)' : 'Title / Workbook Name (optional)'}</span>
+                <span>{isDe ? 'Titel / Buchkapitel' : 'Title / Book Chapter'}</span>
               </label>
               <input
                 type="text"
                 value={bookTitle}
                 onChange={(e) => setBookTitle(e.target.value)}
                 placeholder={
-                  isDe
-                    ? 'z.B. Mathematik 3 - Kapitel Brüche S. 42 oder Englisch Grammatikheft Unit 5'
-                    : 'e.g. Math 3 - Fractions p. 42 or English Grammar Workbook'
+                  selectedCategory === 'languages'
+                    ? (isDe ? 'z.B. More! 1 - Unit 1: School & Classroom oder Easy 1 Vorbereitung 1. Test' : 'e.g. More! 1 - Unit 1: School & Classroom')
+                    : (isDe ? 'z.B. Mathematik 3 - Bruchrechnen S. 42' : 'e.g. Math 3 - Fractions p. 42')
                 }
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-indigo-500"
               />
@@ -463,15 +1062,48 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300">
-                  {isDe ? 'Besondere Hinweise für KI (optional)' : 'Extra AI Instructions'}
+                  {isDe ? 'Zusätzliche Hinweise für KI (optional)' : 'Extra AI Instructions'}
                 </label>
                 <input
                   type="text"
                   value={extraNotes}
                   onChange={(e) => setExtraNotes(e.target.value)}
-                  placeholder={isDe ? 'z.B. Nur Aufgaben 1-4 oder Fokus auf Grammatik' : 'e.g. Focus on exercises 1-4'}
+                  placeholder={isDe ? 'z.B. Fokus auf Vokabeln der Schultasche und Artikel a/an' : 'e.g. Focus on schoolbag items & articles'}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-indigo-500"
                 />
+              </div>
+            </div>
+
+            {/* Automation Options: Auto-Create Test & Task */}
+            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5">
+              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                {isDe ? 'Automatische Bereitstellung für das Kind:' : 'Automated Quiz & Test Setup:'}
+              </span>
+              <div className="space-y-2 text-xs">
+                <label className="flex items-center gap-2.5 cursor-pointer text-slate-300 hover:text-white">
+                  <input
+                    type="checkbox"
+                    checked={autoCreateTest}
+                    onChange={(e) => setAutoCreateTest(e.target.checked)}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <FileCheck className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{isDe ? 'Automatisch als Schultest / Quiz anlegen (mit Timer & Benotung)' : 'Auto-create official Child Test with timer & grades'}</span>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2.5 cursor-pointer text-slate-300 hover:text-white">
+                  <input
+                    type="checkbox"
+                    checked={autoCreateTask}
+                    onChange={(e) => setAutoCreateTask(e.target.checked)}
+                    className="w-4 h-4 rounded text-indigo-600 bg-slate-900 border-slate-700 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{isDe ? 'Automatisch als Belohnungs-Hausaufgabe (XP & Münzen) einstellen' : 'Auto-assign as Homework Quest with XP & Coins'}</span>
+                  </div>
+                </label>
               </div>
             </div>
 
@@ -495,7 +1127,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
               type="button"
               onClick={handleProcessScan}
               disabled={isProcessing || selectedImages.length === 0}
-              className={`w-full py-3.5 px-5 rounded-xl font-black text-sm tracking-wide flex items-center justify-center gap-2 transition-all shadow-lg ${
+              className={`w-full py-3.5 px-5 rounded-xl font-black text-sm tracking-wide flex items-center justify-center gap-2 transition-all shadow-lg cursor-pointer ${
                 isProcessing || selectedImages.length === 0
                   ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
                   : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white shadow-emerald-950/50 border border-emerald-400/40 active:scale-[0.99]'
@@ -548,7 +1180,6 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
         ) : (
           <div className="space-y-3">
             {batches.map((batch) => {
-              const assignedKid = config.kids.find((k) => k.id === batch.assignedKidId);
               const isExpanded = expandedBatchId === batch.id;
               const allCustom = loadCustomQuestions();
               const batchQuestions = allCustom.filter((q) => q.scanBatchId === batch.id);
@@ -571,6 +1202,12 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
                           {batchQuestions.length || batch.questionCount} {isDe ? 'Aufgaben' : 'Questions'}
                         </span>
+                        {batch.aiModelUsed && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-500/40 text-purple-300 flex items-center gap-1">
+                            <Cpu className="w-3 h-3 text-purple-400" />
+                            <span>{batch.aiModelUsed.split('/').pop()}</span>
+                          </span>
+                        )}
                         <span className="text-[10px] text-slate-400">
                           {new Date(batch.createdAt).toLocaleDateString(isDe ? 'de-DE' : 'en-US', {
                             day: '2-digit',
@@ -601,11 +1238,13 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
                           <option value="all" className="bg-slate-900 text-white">
                             👥 {isDe ? 'Alle Kinder' : 'All Children'}
                           </option>
-                          {config.kids.map((k) => (
-                            <option key={k.id} value={k.id} className="bg-slate-900 text-white">
-                              {k.avatar} {k.name}
-                            </option>
-                          ))}
+                          {(config?.kids || [])
+                            .filter((k): k is KidProfile => Boolean(k && k.id && k.name))
+                            .map((k) => (
+                              <option key={k.id} value={k.id} className="bg-slate-900 text-white">
+                                {k.avatar} {k.name}
+                              </option>
+                            ))}
                         </select>
                       </div>
 
@@ -652,12 +1291,34 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
                               className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2"
                             >
                               <div className="flex items-center justify-between text-[11px]">
-                                <span className="font-mono font-bold text-indigo-400">#{qIdx + 1}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono font-bold text-indigo-400">#{qIdx + 1}</span>
+                                  {(q.visual?.pronounceText || q.subject === 'languages') && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const textToSpeak = q.visual?.pronounceText || String(q.correctAnswer);
+                                        speakWord(textToSpeak, q.visual?.pronounceLang || 'en-US');
+                                      }}
+                                      className="p-1 rounded-md bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-white flex items-center gap-1 text-[10px] font-bold border border-indigo-500/30 cursor-pointer"
+                                      title={isDe ? 'Aussprache anhören' : 'Listen to pronunciation'}
+                                    >
+                                      <Volume2 className="w-3 h-3 text-indigo-400" />
+                                      <span>{isDe ? 'Audio' : 'Speak'}</span>
+                                    </button>
+                                  )}
+                                </div>
                                 <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">
                                   {q.subtext || q.topic}
                                 </span>
                               </div>
                               <p className="text-xs font-semibold text-white">{q.question}</p>
+                              {q.visual?.imagePrompt && (
+                                <div className="p-2 rounded-lg bg-indigo-950/40 border border-indigo-800/40 text-[10px] text-indigo-300 flex items-center gap-1.5">
+                                  <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
+                                  <span className="line-clamp-1 italic">🖼️ {q.visual.imagePrompt}</span>
+                                </div>
+                              )}
                               <div className="grid grid-cols-2 gap-1.5 pt-1">
                                 {q.options?.map((opt, optIdx) => {
                                   const isCorrect = opt === q.correctAnswer;
@@ -713,9 +1374,9 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
             </div>
 
             <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
-              <div className="font-bold text-white text-xs">{batchToDelete.bookTitle || (isDe ? 'Unbenannter Scan' : 'Untitled scan')}</div>
+              <div className="font-bold text-white text-xs">{batchToDelete.title || batchToDelete.sourceBookOrChapter || (isDe ? 'Unbenannter Scan' : 'Untitled scan')}</div>
               <div className="text-[11px] text-slate-400 font-mono">
-                {batchToDelete.pageCount || 1} {isDe ? 'Seiten' : 'pages'} • {new Date(batchToDelete.createdAt).toLocaleDateString(isDe ? 'de-DE' : 'en-US')}
+                {batchToDelete.questionCount || 1} {isDe ? 'Aufgaben' : 'questions'} • {new Date(batchToDelete.createdAt).toLocaleDateString(isDe ? 'de-DE' : 'en-US')}
               </div>
             </div>
 
@@ -748,3 +1409,4 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
     </div>
   );
 };
+

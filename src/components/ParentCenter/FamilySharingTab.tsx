@@ -395,7 +395,9 @@ export const FamilySharingTab: React.FC<FamilySharingTabProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          {(activeConfig.kids || []).map((kid) => (
+          {(activeConfig.kids || [])
+            .filter((k): k is KidProfile => Boolean(k && k.id && k.name))
+            .map((kid) => (
             <div
               key={kid.id}
               className="bg-slate-950/80 border border-slate-800/80 hover:border-sky-500/40 rounded-xl p-3.5 transition flex flex-col justify-between"
@@ -656,7 +658,7 @@ export const FamilySharingTab: React.FC<FamilySharingTabProps> = ({
                 <p className="text-xs text-slate-400 mb-3">
                   Erstellt von: <span className="font-mono text-slate-300">{lookupResult.family.ownerEmail}</span> • Enthält{' '}
                   <strong className="text-sky-300">{lookupResult.family.kids?.length || 0} Kinder</strong> (
-                  {lookupResult.family.kids?.map((k) => k.name).join(', ') || 'keine'})
+                  {lookupResult.family.kids?.filter((k) => Boolean(k && k.name)).map((k) => k.name).join(', ') || 'keine'})
                 </p>
 
                 <button

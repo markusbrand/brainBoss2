@@ -12,6 +12,7 @@ import {
 import { ChildTask, ChildTest, KidProfile, ParentConfig } from '../../types';
 import { loadParentConfig } from '../../utils/storage';
 import { soundFx } from '../../utils/audio';
+import { getSkinTheme } from '../../utils/skins';
 
 interface ChildTasksBannerProps {
   profile?: KidProfile;
@@ -28,21 +29,22 @@ export const ChildTasksBanner: React.FC<ChildTasksBannerProps> = ({
   onStartTask,
   onStartTest,
 }) => {
-  const currentKid = profile || kid;
+  const currentKid = (profile && profile.id ? profile : (kid && kid.id ? kid : null));
   if (!currentKid) return null;
 
+  const skin = getSkinTheme(currentKid.skinId);
   const activeConfig = config || loadParentConfig();
   const allTasks = activeConfig?.tasks || [];
   const allTests = activeConfig?.tests || [];
 
   // Filter tasks assigned to this kid or 'all'
   const activeTasks = allTasks.filter(
-    (t) => (t.assignedKidId === 'all' || t.assignedKidId === currentKid.id) && t.status !== 'completed'
+    (t) => t && (t.assignedKidId === 'all' || t.assignedKidId === currentKid.id) && t.status !== 'completed'
   );
 
   // Filter tests assigned to this kid or 'all'
   const activeTests = allTests.filter(
-    (t) => t.assignedKidIds?.includes('all') || t.assignedKidIds?.includes(currentKid.id)
+    (t) => t && (t.assignedKidIds?.includes('all') || t.assignedKidIds?.includes(currentKid.id))
   );
 
   if (activeTasks.length === 0 && activeTests.length === 0) {
@@ -53,63 +55,106 @@ export const ChildTasksBanner: React.FC<ChildTasksBannerProps> = ({
     <div className="w-full max-w-5xl mx-auto px-4 mb-6 space-y-3">
       {/* Active Tests Section */}
       {activeTests.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-950/70 via-purple-950/70 to-slate-900 border border-amber-500/40 rounded-2xl p-4 sm:p-5 shadow-lg backdrop-blur-md">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-300">
-                <GraduationCap className="w-5 h-5 animate-bounce" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-white text-sm sm:text-base">
-                    Aktueller Test: {activeTests[0].title}
-                  </span>
-                  <span className="text-[10px] bg-amber-400/20 text-amber-300 font-bold px-2 py-0.5 rounded-full border border-amber-400/30">
-                    {activeTests[0].questions.length} Fragen
-                  </span>
+        <div className="space-y-2.5">
+          {activeTests.map((test) => (
+            <div
+              key={test.id}
+              className="border rounded-2xl p-4 sm:p-5 shadow-lg backdrop-blur-md transition-all"
+              style={{
+                background: skin.heroGradient,
+                borderColor: skin.heroBorder,
+                boxShadow: `0 0 25px ${skin.glowRgba}`,
+              }}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center border shrink-0 text-base"
+                    style={{
+                      backgroundColor: skin.badgeBg,
+                      borderColor: skin.badgeText,
+                      color: skin.badgeText,
+                    }}
+                  >
+                    {test.subject === 'languages' ? '🇬🇧' : test.subject === 'math' ? '🔢' : '🏆'}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-white text-sm sm:text-base">
+                        {test.title}
+                      </span>
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                        style={{
+                          backgroundColor: skin.badgeBg,
+                          borderColor: skin.badgeText,
+                          color: skin.badgeText,
+                        }}
+                      >
+                        {test.questions?.length || 0} Fragen
+                      </span>
+                      {test.topic && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950/70 border border-indigo-500/40 text-indigo-300">
+                          {test.topic}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-300 mt-0.5 flex items-center gap-3 flex-wrap">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" style={{ color: skin.highlightAccent }} />
+                        {test.timeLimitMinutes > 0 ? `${test.timeLimitMinutes} Min.` : 'Kein Zeitlimit'}
+                      </span>
+                      {test.dueDate && (
+                        <span className="flex items-center gap-1 text-amber-300/80">
+                          <Calendar className="w-3 h-3 text-amber-400" />
+                          Fällig: {test.dueDate}
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-300 mt-0.5 flex items-center gap-3">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-cyan-400" />
-                    {activeTests[0].timeLimitMinutes > 0 ? `${activeTests[0].timeLimitMinutes} Min.` : 'Kein Zeitlimit'}
-                  </span>
-                  {activeTests[0].dueDate && (
-                    <span className="flex items-center gap-1 text-amber-300/80">
-                      <Calendar className="w-3 h-3 text-amber-400" />
-                      Fällig: {activeTests[0].dueDate}
-                    </span>
-                  )}
-                </p>
+
+                <button
+                  id={`btn_start_assigned_test_${test.id}`}
+                  type="button"
+                  onClick={() => {
+                    soundFx.playPop();
+                    onStartTest(test);
+                  }}
+                  style={{
+                    background: skin.primaryButtonGradient,
+                    color: skin.primaryButtonText,
+                    borderColor: skin.primaryButtonBorder,
+                    boxShadow: skin.primaryButtonGlow,
+                  }}
+                  className="py-2.5 px-5 rounded-xl border font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer self-stretch sm:self-auto shrink-0"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Test jetzt starten!</span>
+                </button>
               </div>
             </div>
-
-            <button
-              id="btn_start_assigned_test"
-              type="button"
-              onClick={() => {
-                soundFx.playPop();
-                onStartTest(activeTests[0]);
-              }}
-              className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 text-white font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer self-stretch sm:self-auto"
-            >
-              <Play className="w-4 h-4 fill-white" />
-              <span>Test jetzt starten!</span>
-            </button>
-          </div>
+          ))}
         </div>
       )}
 
       {/* Active Tasks / Homework Section */}
       {activeTasks.length > 0 && (
-        <div className="bg-slate-900/80 border border-indigo-500/30 rounded-2xl p-4 sm:p-5 shadow-lg backdrop-blur-md space-y-3">
+        <div
+          className="border rounded-2xl p-4 sm:p-5 shadow-lg backdrop-blur-md space-y-3 transition-all"
+          style={{
+            backgroundColor: skin.cardBg,
+            borderColor: skin.cardBorder,
+          }}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ClipboardList className="w-4 h-4 text-cyan-400" />
+              <ClipboardList className="w-4 h-4" style={{ color: skin.highlightAccent }} />
               <span className="font-extrabold text-white text-xs sm:text-sm">
                 Deine aktuellen Aufgaben ({activeTasks.length})
               </span>
             </div>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-slate-300/80">
               Klasse {currentKid.schoolClass || `${currentKid.schoolGrade || 2}. Stufe`}
             </span>
           </div>
@@ -123,15 +168,22 @@ export const ChildTasksBanner: React.FC<ChildTasksBannerProps> = ({
               return (
                 <div
                   key={task.id}
-                  className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-3 hover:border-slate-700 transition-all"
+                  style={{
+                    backgroundColor: skin.modeCardBg,
+                    borderColor: skin.modeCardBorder,
+                  }}
+                  className="border rounded-xl p-3 flex items-center justify-between gap-3 hover:scale-[1.01] transition-all"
                 >
                   <div className="space-y-1 min-w-0 flex-1">
                     <span className="font-bold text-white text-xs block truncate">{task.title}</span>
                     <div className="flex items-center gap-2">
-                      <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div className="w-24 h-1.5 bg-slate-950/60 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-cyan-400 to-indigo-500 transition-all"
-                          style={{ width: `${progressPct}%` }}
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            background: skin.tabActiveGradient,
+                            width: `${progressPct}%`,
+                          }}
                         />
                       </div>
                       <span className="text-[10px] font-mono text-slate-400">
@@ -141,7 +193,14 @@ export const ChildTasksBanner: React.FC<ChildTasksBannerProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md">
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-md border"
+                      style={{
+                        backgroundColor: skin.badgeBg,
+                        borderColor: skin.badgeText,
+                        color: skin.badgeText,
+                      }}
+                    >
                       +{task.rewardXp} XP
                     </span>
                     <button
@@ -150,7 +209,11 @@ export const ChildTasksBanner: React.FC<ChildTasksBannerProps> = ({
                         soundFx.playPop();
                         if (onStartTask) onStartTask(task);
                       }}
-                      className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer"
+                      style={{
+                        background: skin.primaryButtonGradient,
+                        color: skin.primaryButtonText,
+                      }}
+                      className="p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
                       title="Aufgabe starten"
                     >
                       <ArrowRight className="w-3.5 h-3.5" />

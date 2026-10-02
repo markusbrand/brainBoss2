@@ -26,6 +26,9 @@ import {
   fetchRemoteDbData,
   subscribeToAuth,
   syncUserProfile,
+  getDirectParentSession,
+  setDirectParentSession,
+  handleRedirectAuthResult,
   logOut,
   SUPER_ADMIN_EMAIL,
 } from './utils/storage';
@@ -48,7 +51,7 @@ import { SkinSelectorModal } from './components/Skins/SkinSelectorModal';
 import { LoginScreen } from './components/Auth/LoginScreen';
 import { ChildTasksBanner } from './components/ChildPortal/ChildTasksBanner';
 import { ChildTestModal } from './components/ChildPortal/ChildTestModal';
-import { getSkinTheme, SkinThemeId } from './utils/skins';
+import { getSkinTheme, getSkinCssVariables, SkinThemeId } from './utils/skins';
 import { useLanguage } from './context/LanguageContext';
 import { BookOpen, Trophy, Gift, Shield, ShoppingBag } from 'lucide-react';
 
@@ -61,7 +64,7 @@ export default function App() {
   
   // Authentication & RBAC state
   const [authUser, setAuthUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getDirectParentSession());
   const [childSession, setChildSession] = useState<KidProfile | null>(() => {
     try {
       const saved = localStorage.getItem(CHILD_SESSION_STORAGE_KEY);
@@ -80,7 +83,7 @@ export default function App() {
   const [activeGameMode, setActiveGameMode] = useState<GameMode | null>(null);
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
   const [selectedTargetLanguage, setSelectedTargetLanguage] = useState<TargetLearnLanguage>(
-    profile.targetLanguage || (language === 'de' ? 'en' : 'fr')
+    profile?.targetLanguage || (language === 'de' ? 'en' : 'fr')
   );
 
   // Modals
@@ -94,10 +97,18 @@ export default function App() {
   const [soundMuted, setSoundMuted] = useState(soundFx.isMuted());
 
   // Active Skin Object
-  const currentSkin = getSkinTheme(profile.skinId || 'cyber_neon');
+  const currentSkin = getSkinTheme(profile?.skinId || 'cyber_neon');
 
-  // Listen to Firebase Auth state
+  // Listen to Firebase Auth state & Check Redirect Result
   useEffect(() => {
+    // Check if redirected from Google Auth
+    handleRedirectAuthResult().then((redirectRes) => {
+      if (redirectRes) {
+        setAuthUser(redirectRes.user);
+        setUserProfile(redirectRes.profile);
+      }
+    }).catch((e) => console.warn('Redirect auth check notice:', e));
+
     const unsubscribe = subscribeToAuth(async (user) => {
       setAuthUser(user);
       if (user) {
@@ -108,7 +119,12 @@ export default function App() {
           console.error('Error fetching user profile:', err);
         }
       } else {
-        setUserProfile(null);
+        const directSession = getDirectParentSession();
+        if (directSession) {
+          setUserProfile(directSession);
+        } else {
+          setUserProfile(null);
+        }
       }
       setAuthLoading(false);
     });
@@ -124,7 +140,7 @@ export default function App() {
     const updatedKid: KidProfile = { ...profile, skinId };
     setProfile(updatedKid);
     savePlayerProfile(updatedKid);
-    const updatedKids = parentConfig.kids.map((k) => (k.id === updatedKid.id ? updatedKid : k));
+    const updatedKids = (parentConfig.kids || []).map((k) => (k && k.id === updatedKid.id ? updatedKid : k));
     const updatedConfig = { ...parentConfig, kids: updatedKids };
     setParentConfig(updatedConfig);
     saveParentConfig(updatedConfig);
@@ -143,10 +159,10 @@ export default function App() {
 
   // Keep target language in sync if profile changes
   useEffect(() => {
-    if (profile.targetLanguage) {
+    if (profile?.targetLanguage) {
       setSelectedTargetLanguage(profile.targetLanguage);
     }
-  }, [profile.id, profile.targetLanguage]);
+  }, [profile?.id, profile?.targetLanguage]);
 
   // Toggle Sound
   const handleToggleSound = () => {
@@ -191,7 +207,7 @@ export default function App() {
     setProfile(updatedKid);
     savePlayerProfile(updatedKid);
     // Also sync in parentConfig
-    const updatedKids = parentConfig.kids.map((k) => (k.id === updatedKid.id ? updatedKid : k));
+    const updatedKids = (parentConfig.kids || []).map((k) => (k && k.id === updatedKid.id ? updatedKid : k));
     const updatedConfig = { ...parentConfig, kids: updatedKids };
     setParentConfig(updatedConfig);
     saveParentConfig(updatedConfig);
@@ -271,7 +287,7 @@ export default function App() {
     setProfile(updated);
 
     // Sync in parent config list
-    const updatedKids = parentConfig.kids.map((k) => (k.id === updated.id ? updated : k));
+    const updatedKids = (parentConfig.kids || []).map((k) => (k && k.id === updated.id ? updated : k));
     const updatedConfig = { ...parentConfig, kids: updatedKids };
     setParentConfig(updatedConfig);
     saveParentConfig(updatedConfig);
@@ -283,7 +299,7 @@ export default function App() {
     if (success) {
       const updatedKid = updated as KidProfile;
       setProfile(updatedKid);
-      const updatedKids = parentConfig.kids.map((k) => (k.id === updatedKid.id ? updatedKid : k));
+      const updatedKids = (parentConfig.kids || []).map((k) => (k && k.id === updatedKid.id ? updatedKid : k));
       const updatedConfig = { ...parentConfig, kids: updatedKids };
       setParentConfig(updatedConfig);
       saveParentConfig(updatedConfig);
@@ -311,7 +327,7 @@ export default function App() {
     setProfile(updated);
     savePlayerProfile(updated);
 
-    const updatedKids = parentConfig.kids.map((k) => (k.id === updated.id ? updated : k));
+    const updatedKids = (parentConfig.kids || []).map((k) => (k && k.id === updated.id ? updated : k));
     const updatedConfig = { ...parentConfig, kids: updatedKids };
     setParentConfig(updatedConfig);
     saveParentConfig(updatedConfig);
@@ -337,7 +353,7 @@ export default function App() {
     setProfile(updated);
     savePlayerProfile(updated);
 
-    const updatedKids = parentConfig.kids.map((k) => (k.id === updated.id ? updated : k));
+    const updatedKids = (parentConfig.kids || []).map((k) => (k && k.id === updated.id ? updated : k));
     const updatedConfig = { ...parentConfig, kids: updatedKids };
     setParentConfig(updatedConfig);
     saveParentConfig(updatedConfig);
@@ -347,7 +363,7 @@ export default function App() {
   const handleClaimDailyQuest = (questId: string) => {
     const updated = claimDailyQuest(profile, questId) as KidProfile;
     setProfile(updated);
-    const updatedKids = parentConfig.kids.map((k) => (k.id === updated.id ? updated : k));
+    const updatedKids = (parentConfig.kids || []).map((k) => (k && k.id === updated.id ? updated : k));
     const updatedConfig = { ...parentConfig, kids: updatedKids };
     setParentConfig(updatedConfig);
     saveParentConfig(updatedConfig);
@@ -367,8 +383,8 @@ export default function App() {
     );
   }
 
-  // If no user is logged in (neither admin via Google nor child via code), render the LoginScreen!
-  if (!authUser && !childSession) {
+  // If no user is logged in (neither admin/parent via in-page or Google nor child via code), render the LoginScreen!
+  if (!authUser && !userProfile && !childSession) {
     return (
       <LoginScreen
         onLoginSuccess={(prof, activeKid, user) => {
@@ -380,7 +396,7 @@ export default function App() {
           }
         }}
         onAdminLoggedIn={(user, prof) => {
-          setAuthUser(user);
+          if (user) setAuthUser(user);
           if (prof) setUserProfile(prof);
         }}
         onChildLoggedIn={handleChildLoginSuccess}
@@ -389,16 +405,22 @@ export default function App() {
     );
   }
 
-  const isChildMode = Boolean(childSession && !authUser);
+  const isChildMode = Boolean(childSession && !authUser && !userProfile);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white font-sans selection:bg-cyan-500 selection:text-slate-950 flex flex-col relative overflow-x-hidden">
-      {/* Immersive Ambient Glow Backdrop */}
+    <div
+      id="brainboss-root"
+      className={`min-h-screen text-white font-sans flex flex-col relative overflow-x-hidden transition-colors duration-500 ${currentSkin.appWrapperClass}`}
+      style={{
+        background: currentSkin.bgGradient,
+        ...getSkinCssVariables(currentSkin),
+      }}
+    >
+      {/* Immersive Ambient Glow Backdrop - dynamically shifts with active child's configured theme */}
       <div
-        className="pointer-events-none fixed inset-0 opacity-20 z-0"
+        className="pointer-events-none fixed inset-0 opacity-30 z-0 transition-all duration-700"
         style={{
-          backgroundImage:
-            'radial-gradient(circle at 20% 25%, #3b82f6 0%, transparent 50%), radial-gradient(circle at 80% 75%, #8b5cf6 0%, transparent 50%), radial-gradient(circle at 50% 50%, #06b6d4 0%, transparent 60%)',
+          backgroundImage: currentSkin.ambientGlow,
         }}
       />
 
@@ -406,6 +428,7 @@ export default function App() {
       <Navbar
         profile={profile}
         kids={parentConfig.kids}
+        skin={currentSkin}
         activeTab={activeTab}
         onSelectTab={(tab) => {
           setActiveGameMode(null);
@@ -510,17 +533,21 @@ export default function App() {
 
                 <MathQuestView
                   profile={profile}
+                  config={parentConfig}
                   activeSubject={activeSubject}
+                  selectedTopic={selectedTopic}
+                  onSelectTopic={setSelectedTopic}
                   onSelectSubject={setActiveSubject}
                   onStartGame={handleStartGame}
                   onOpenAiStory={() => setActiveGameMode('ai_story')}
+                  onStartTest={(test) => setActiveTestForKid(test)}
                   onUpdateTargetLanguage={(lang) => {
                     setSelectedTargetLanguage(lang);
                     const updatedKid: KidProfile = { ...profile, targetLanguage: lang };
                     setProfile(updatedKid);
                     savePlayerProfile(updatedKid);
-                    const updatedKids = parentConfig.kids.map((k) =>
-                      k.id === updatedKid.id ? updatedKid : k
+                    const updatedKids = (parentConfig.kids || []).map((k) =>
+                      k && k.id === updatedKid.id ? updatedKid : k
                     );
                     const updatedConfig = { ...parentConfig, kids: updatedKids };
                     setParentConfig(updatedConfig);

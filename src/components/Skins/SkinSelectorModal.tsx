@@ -2,26 +2,32 @@ import React from 'react';
 import { Palette, Check, Sparkles, X, Shield } from 'lucide-react';
 import { KidProfile, SkinThemeId } from '../../types';
 import { SKIN_THEMES, getSkinTheme } from '../../utils/skins';
+import { DEFAULT_PARENT_CONFIG } from '../../utils/storage';
 import { soundFx } from '../../utils/audio';
 import { useLanguage } from '../../context/LanguageContext';
 
 interface SkinSelectorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  activeKid: KidProfile;
+  activeKid?: KidProfile;
   onSelectSkin: (skinId: SkinThemeId) => void;
 }
 
 export const SkinSelectorModal: React.FC<SkinSelectorModalProps> = ({
   isOpen,
   onClose,
-  activeKid,
+  activeKid: propActiveKid,
   onSelectSkin,
 }) => {
   const { language } = useLanguage();
   const isDe = language === 'de';
 
   if (!isOpen) return null;
+
+  const activeKid: KidProfile =
+    propActiveKid && propActiveKid.id && propActiveKid.name
+      ? propActiveKid
+      : DEFAULT_PARENT_CONFIG.kids[0];
 
   const currentSkinId = activeKid.skinId || 'cyber_neon';
 

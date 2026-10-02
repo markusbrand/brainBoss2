@@ -30,6 +30,7 @@ import {
   LogOut,
   Share2,
   HeartHandshake,
+  RotateCcw,
 } from 'lucide-react';
 import { GameMode, GradeLevel, KidProfile, ParentConfig, SkinThemeId, SubjectArea, TargetLearnLanguage, UserProfile } from '../../types';
 import {
@@ -37,6 +38,7 @@ import {
   loadParentConfig,
   saveParentConfig,
   switchActiveKid,
+  DEFAULT_PARENT_CONFIG,
 } from '../../utils/storage';
 import { getLanguageDisplayName, getLanguageFlag } from '../../utils/subjectEngines';
 import { SKIN_THEMES } from '../../utils/skins';
@@ -71,7 +73,18 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
   onSwitchKid,
   onProfileUpdated,
 }) => {
-  const { t, language } = useLanguage();
+  const {
+    t,
+    language,
+    unitSystem,
+    localizationMode,
+    setLanguage,
+    setUnitSystem,
+    setAutodetect,
+    formatDistance,
+    formatWeight,
+    formatTemperature,
+  } = useLanguage();
   const [config, setConfig] = useState<ParentConfig>(() => propConfig || loadParentConfig());
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [enteredPin, setEnteredPin] = useState('');
@@ -117,7 +130,9 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
   const [pinChangeMsg, setPinChangeMsg] = useState<{ text: string; success: boolean } | null>(null);
 
   // Selected kid for analytics & curriculum tab
-  const [selectedKidIdForAdmin, setSelectedKidIdForAdmin] = useState<string>(config.activeKidId || config.kids[0]?.id || 'kid_1');
+  const [selectedKidIdForAdmin, setSelectedKidIdForAdmin] = useState<string>(
+    config?.activeKidId || config?.kids?.[0]?.id || 'kid_1'
+  );
 
   if (!isOpen) return null;
 
@@ -127,7 +142,10 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
     if (onUpdateConfig) {
       onUpdateConfig(updatedConfig);
     }
-    const activeKid = updatedConfig.kids.find((k) => k.id === updatedConfig.activeKidId) || updatedConfig.kids[0];
+    const activeKid =
+      (updatedConfig?.kids || []).find((k) => k && k.id === updatedConfig.activeKidId) ||
+      updatedConfig?.kids?.[0] ||
+      DEFAULT_PARENT_CONFIG.kids[0];
     if (onProfileUpdated && activeKid) {
       onProfileUpdated(activeKid);
     }
@@ -338,7 +356,10 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
     window.print();
   };
 
-  const currentKidData = config.kids.find((k) => k.id === selectedKidIdForAdmin) || config.kids[0];
+  const currentKidData =
+    (config?.kids || []).find((k) => k && k.id === selectedKidIdForAdmin) ||
+    config?.kids?.[0] ||
+    DEFAULT_PARENT_CONFIG.kids[0];
 
   const AVATAR_CHOICES = ['🚀', '🤖', '🦉', '🦊', '🦁', '🐬', '🦄', '🌟', '🧙‍♂️', '🦸‍♀️', '🎨', '⚡'];
 
@@ -712,25 +733,13 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-xs text-slate-400 font-semibold">Kinder-Login-Code</label>
+                          <label className="text-xs text-slate-400 font-semibold">Kinder-Login-Code (optional)</label>
                           <input
                             type="text"
                             value={kidFormLoginCode}
                             onChange={(e) => setKidFormLoginCode(e.target.value.toUpperCase())}
                             placeholder="z. B. FELIX-101"
                             className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-cyan-300 font-mono text-sm focus:border-indigo-500 focus:outline-none uppercase"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-xs text-slate-400 font-semibold">Kinder-PIN</label>
-                          <input
-                            type="text"
-                            maxLength={6}
-                            value={kidFormPin}
-                            onChange={(e) => setKidFormPin(e.target.value.replace(/\D/g, ''))}
-                            placeholder="1234"
-                            className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-amber-300 font-mono text-sm focus:border-indigo-500 focus:outline-none tracking-widest text-center"
                           />
                         </div>
 
@@ -879,7 +888,9 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
 
                   {/* List of Kids */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {config.kids.map((kid) => {
+                    {(config?.kids || [])
+                      .filter((k): k is KidProfile => Boolean(k && k.id && k.name))
+                      .map((kid) => {
                       const isActive = kid.id === config.activeKidId;
                       const accuracy = kid.totalSolved > 0 ? Math.round((kid.correctCount / kid.totalSolved) * 100) : 100;
                       const kidSkinObj = SKIN_THEMES.find((s) => s.id === (kid.skinId || 'cyber_neon')) || SKIN_THEMES[0];
@@ -979,9 +990,9 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                               <span className="text-[10px] text-slate-500 font-sans">Login-Code:</span>
                               <span className="font-bold">{kid.loginCode || `${kid.name.toUpperCase()}-101`}</span>
                             </div>
-                            <div className="flex items-center gap-1.5 text-amber-300">
-                              <span className="text-[10px] text-slate-500 font-sans">PIN:</span>
-                              <span className="font-bold">{kid.pin || '1234'}</span>
+                            <div className="flex items-center gap-1.5 text-emerald-300">
+                              <span className="text-[10px] text-slate-500 font-sans">Klasse:</span>
+                              <span className="font-bold">{kid.schoolClass || `${kid.schoolGrade || 2}. Schulstufe`}</span>
                             </div>
                           </div>
 
@@ -1100,11 +1111,13 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                         onChange={(e) => setSelectedKidIdForAdmin(e.target.value)}
                         className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white focus:outline-none"
                       >
-                        {config.kids.map((k) => (
-                          <option key={k.id} value={k.id}>
-                            {k.avatar} {k.name}
-                          </option>
-                        ))}
+                        {(config?.kids || [])
+                          .filter((k): k is KidProfile => Boolean(k && k.id && k.name))
+                          .map((k) => (
+                            <option key={k.id} value={k.id}>
+                              {k.avatar} {k.name}
+                            </option>
+                          ))}
                       </select>
 
                       <button
@@ -1385,6 +1398,149 @@ export const ParentCenterModal: React.FC<ParentCenterModalProps> = ({
                     >
                       {t.parentCenter.savePinBtn}
                     </button>
+                  </div>
+
+                  {/* Localization & Measurement Units Card */}
+                  <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-cyan-400" />
+                          <span>{language === 'de' ? 'Sprache & Maßeinheiten' : 'Language & Units'}</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-400">
+                          {language === 'de'
+                            ? 'Wird automatisch vom Browser erkannt oder kann manuell festgelegt werden.'
+                            : 'Automatically detected from browser or manually configured.'}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          localizationMode === 'auto'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                        }`}
+                      >
+                        {localizationMode === 'auto'
+                          ? (language === 'de' ? '🌐 Automatisch (Browser)' : '🌐 Automatic (Browser)')
+                          : (language === 'de' ? '⚙️ Manuell' : '⚙️ Manual')}
+                      </span>
+                    </div>
+
+                    {/* Language Selector */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-slate-400 font-semibold">
+                        {language === 'de' ? 'App-Sprache (Interface)' : 'App Language'}
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundFx.playPop();
+                            setLanguage('de');
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                            language === 'de'
+                              ? 'bg-cyan-600/30 border-cyan-400 text-cyan-200 shadow-md ring-1 ring-cyan-400'
+                              : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          <span>🇩🇪</span>
+                          <span>Deutsch</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundFx.playPop();
+                            setLanguage('en');
+                          }}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                            language === 'en'
+                              ? 'bg-cyan-600/30 border-cyan-400 text-cyan-200 shadow-md ring-1 ring-cyan-400'
+                              : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          <span>🇬🇧</span>
+                          <span>English</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Measurement Units Selector */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-slate-400 font-semibold">
+                        {language === 'de' ? 'Maßeinheiten & Mess-System' : 'Measurement Units System'}
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundFx.playPop();
+                            setUnitSystem('metric');
+                          }}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                            unitSystem === 'metric'
+                              ? 'bg-indigo-950/60 border-indigo-400 text-white shadow-md ring-1 ring-indigo-400'
+                              : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          <div className="text-xs font-bold flex items-center gap-1.5">
+                            <span>📏</span>
+                            <span>{language === 'de' ? 'Metrisch' : 'Metric'}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-0.5">m, km, Gramm, kg, Liter, °C</p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundFx.playPop();
+                            setUnitSystem('imperial');
+                          }}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                            unitSystem === 'imperial'
+                              ? 'bg-indigo-950/60 border-indigo-400 text-white shadow-md ring-1 ring-indigo-400'
+                              : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          <div className="text-xs font-bold flex items-center gap-1.5">
+                            <span>📐</span>
+                            <span>{language === 'de' ? 'Imperial / US' : 'Imperial / US'}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-0.5">ft, mi, lbs, fl oz, °F</p>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Live Preview & Reset */}
+                    <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2 flex-wrap text-xs">
+                      <div className="text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
+                        <span className="text-slate-300 font-bold">{formatDistance(3200)}</span>
+                        <span className="opacity-40">•</span>
+                        <span className="text-slate-300 font-bold">{formatWeight(850)}</span>
+                        <span className="opacity-40">•</span>
+                        <span className="text-slate-300 font-bold">{formatTemperature(20)}</span>
+                      </div>
+
+                      {localizationMode === 'manual' ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundFx.playCorrect();
+                            setAutodetect();
+                          }}
+                          className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 cursor-pointer underline underline-offset-2"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>{language === 'de' ? 'Auf Browser-Erkennung zurücksetzen' : 'Reset to Browser Auto-detect'}</span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                          <span>✓</span>
+                          <span>{language === 'de' ? 'Browser-Einstellung aktiv' : 'Browser detection active'}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

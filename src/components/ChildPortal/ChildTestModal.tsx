@@ -10,11 +10,13 @@ import {
   ArrowLeft,
   X,
   AlertTriangle,
+  Volume2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ChildTest, KidProfile, ProblemItem, TestSubmission } from '../../types';
 import { recordTestSubmission, addXPAndCoins } from '../../utils/storage';
 import { soundFx } from '../../utils/audio';
+import { speakWord } from '../../utils/subjectEngines';
 
 interface ChildTestModalProps {
   isOpen: boolean;
@@ -213,14 +215,39 @@ export const ChildTestModal: React.FC<ChildTestModalProps> = ({
 
             {/* Question Card */}
             {currentQuestion ? (
-              <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-6">
-                <div>
-                  <span className="text-xs font-bold text-amber-400">
-                    Frage {currentIdx + 1} von {questions.length}:
-                  </span>
+              <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-5">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-amber-400">
+                      Frage {currentIdx + 1} von {questions.length}:
+                    </span>
+                    {(currentQuestion.visual?.pronounceText || currentQuestion.subject === 'languages') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const textToSpeak = currentQuestion.visual?.pronounceText || String(currentQuestion.correctAnswer);
+                          speakWord(textToSpeak, currentQuestion.visual?.pronounceLang || 'en-US');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-white border border-indigo-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Aussprache anhören"
+                      >
+                        <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Aussprache (Audio)</span>
+                      </button>
+                    )}
+                  </div>
                   <h4 className="text-lg sm:text-xl font-extrabold text-white mt-1 leading-snug">
                     {currentQuestion.question}
                   </h4>
+                  {currentQuestion.subtext && (
+                    <p className="text-xs text-slate-400 font-medium">{currentQuestion.subtext}</p>
+                  )}
+                  {currentQuestion.visual?.imagePrompt && (
+                    <div className="p-2.5 rounded-xl bg-indigo-950/40 border border-indigo-800/40 text-xs text-indigo-200 flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span className="italic line-clamp-2">🖼️ {currentQuestion.visual.imagePrompt}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Options */}

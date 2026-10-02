@@ -1366,33 +1366,70 @@ const findMatchingCustomQuestion = (
   activeKidId?: string
 ): CustomQuestion | null => {
   const custom = loadCustomQuestions();
-  if (custom.length === 0) return null;
+  
+  if (custom.length > 0) {
+    const matches = custom.filter((q) => {
+      // Subject matching
+      if (q.subject && q.subject !== subject) return false;
+      // Target language matching
+      if (targetLang && q.targetLanguage && q.targetLanguage !== targetLang) return false;
+      // Topic matching
+      if (topic && topic !== 'all') {
+        const qTopic = (q.topic || '').trim().toLowerCase();
+        const searchTopic = topic.trim().toLowerCase();
+        if (qTopic !== searchTopic && !qTopic.includes(searchTopic) && !searchTopic.includes(qTopic)) {
+          return false;
+        }
+      }
+      // Child assignment matching: if question is assigned to a specific kid, only give it to that kid!
+      if (activeKidId && q.assignedKidId && q.assignedKidId !== 'all' && q.assignedKidId !== activeKidId) {
+        return false;
+      }
+      return true;
+    });
 
-  const matches = custom.filter((q) => {
-    // Subject matching
-    if (q.subject && q.subject !== subject) return false;
-    // GradeLevel matching
-    if (q.gradeLevel && q.gradeLevel !== grade) return false;
-    // Target language matching
-    if (targetLang && q.targetLanguage && q.targetLanguage !== targetLang) return false;
-    // Topic matching (unless all)
-    if (topic !== 'all' && q.topic && q.topic !== topic && !q.topic.includes('scan')) return false;
-    // Child assignment matching: if question is assigned to a specific kid, only give it to that kid!
-    if (activeKidId && q.assignedKidId && q.assignedKidId !== 'all' && q.assignedKidId !== activeKidId) {
-      return false;
+    // If a specific focus topic was selected (not 'all') and we found questions: ALWAYS return one!
+    if (topic && topic !== 'all' && matches.length > 0) {
+      return matches[randInt(0, matches.length - 1)];
     }
-    return true;
-  });
 
-  // Prioritize scanned homework & schoolbook questions if available!
-  const scannedMatches = matches.filter((q) => q.source === 'schoolbook_scan');
-  if (scannedMatches.length > 0 && Math.random() < 0.7) {
-    return scannedMatches[randInt(0, scannedMatches.length - 1)];
+    // Prioritize scanned homework & schoolbook questions if available in general practice!
+    const scannedMatches = matches.filter((q) => q.source === 'schoolbook_scan');
+    if (scannedMatches.length > 0 && Math.random() < 0.7) {
+      return scannedMatches[randInt(0, scannedMatches.length - 1)];
+    }
+
+    if (matches.length > 0 && Math.random() < 0.5) {
+      return matches[randInt(0, matches.length - 1)];
+    }
   }
 
-  if (matches.length > 0 && Math.random() < 0.5) {
-    return matches[randInt(0, matches.length - 1)];
+  // Fallback: check questions from official parent tests matching this focus topic
+  if (topic && topic !== 'all') {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('brainboss_parent_config_v3') : null;
+      const cfg = raw ? JSON.parse(raw) : null;
+      const matchingTest = cfg?.tests?.find((t: any) => {
+        const tTopic = (t.topic || '').trim().toLowerCase();
+        const tTitle = (t.title || '').trim().toLowerCase();
+        const searchTopic = topic.trim().toLowerCase();
+        const topicMatch = tTopic === searchTopic || tTopic.includes(searchTopic) || tTitle.includes(searchTopic);
+        const kidMatch = t.assignedKidIds?.includes('all') || !activeKidId || t.assignedKidIds?.includes(activeKidId);
+        return (t.subject === subject || !t.subject) && topicMatch && kidMatch;
+      });
+
+      if (matchingTest && matchingTest.questions && matchingTest.questions.length > 0) {
+        const picked = matchingTest.questions[randInt(0, matchingTest.questions.length - 1)];
+        return {
+          ...picked,
+          isCustom: true,
+          source: 'schoolbook_scan',
+          scanBatchTitle: matchingTest.title,
+        };
+      }
+    } catch {}
   }
+
   return null;
 };
 
@@ -1404,10 +1441,11 @@ export const generateNatureProblem = (
   topic: string = 'all',
   grade: GradeLevel = 'primary',
   lang: Language = 'de',
-  difficulty: number = 2
+  difficulty: number = 2,
+  activeKidId?: string
 ): ProblemItem => {
   // Check custom question first
-  const custom = findMatchingCustomQuestion('nature', topic, grade, difficulty);
+  const custom = findMatchingCustomQuestion('nature', topic, grade, difficulty, undefined, activeKidId);
   if (custom) return custom;
 
   const isDe = lang === 'de';
@@ -1450,9 +1488,10 @@ export const generateGeographyProblem = (
   topic: string = 'all',
   grade: GradeLevel = 'primary',
   lang: Language = 'de',
-  difficulty: number = 2
+  difficulty: number = 2,
+  activeKidId?: string
 ): ProblemItem => {
-  const custom = findMatchingCustomQuestion('geography', topic, grade, difficulty);
+  const custom = findMatchingCustomQuestion('geography', topic, grade, difficulty, undefined, activeKidId);
   if (custom) return custom;
 
   const isDe = lang === 'de';
@@ -1495,9 +1534,10 @@ export const generateArtProblem = (
   topic: string = 'all',
   grade: GradeLevel = 'primary',
   lang: Language = 'de',
-  difficulty: number = 2
+  difficulty: number = 2,
+  activeKidId?: string
 ): ProblemItem => {
-  const custom = findMatchingCustomQuestion('art', topic, grade, difficulty);
+  const custom = findMatchingCustomQuestion('art', topic, grade, difficulty, undefined, activeKidId);
   if (custom) return custom;
 
   const isDe = lang === 'de';

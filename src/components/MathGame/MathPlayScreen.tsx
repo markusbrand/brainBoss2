@@ -50,13 +50,13 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
     const effectiveDiff = Math.min(5, Math.max(1, Math.round((currentDiff + baseDifficulty) / 2)));
     switch (subj) {
       case 'nature':
-        return generateNatureProblem(topic, profile.gradeLevel, language);
+        return generateNatureProblem(topic, profile.gradeLevel, language, effectiveDiff, profile.id);
       case 'geography':
-        return generateGeographyProblem(topic, profile.gradeLevel, language);
+        return generateGeographyProblem(topic, profile.gradeLevel, language, effectiveDiff, profile.id);
       case 'art':
-        return generateArtProblem(topic, profile.gradeLevel, language);
+        return generateArtProblem(topic, profile.gradeLevel, language, effectiveDiff, profile.id);
       case 'languages':
-        return generateLanguageProblem(targetLanguage, topic, profile.gradeLevel, language);
+        return generateLanguageProblem(targetLanguage, topic, profile.gradeLevel, language, effectiveDiff, profile.id);
       case 'math':
       default:
         return generateTask(profile.gradeLevel, topic as any, effectiveDiff, language);
@@ -331,12 +331,23 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
   return (
     <div className="max-w-4xl mx-auto space-y-4 p-3 sm:p-6 text-white animate-in fade-in duration-300">
       {/* Top HUD Bar */}
-      <div className="bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-800 p-4 shadow-xl flex flex-wrap items-center justify-between gap-3">
+      <div
+        className="backdrop-blur-md rounded-2xl border p-4 shadow-xl flex flex-wrap items-center justify-between gap-3 transition-all"
+        style={{
+          backgroundColor: skin.cardBg,
+          borderColor: skin.cardBorder,
+        }}
+      >
         {/* Left: Exit & Subject Badge */}
         <div className="flex items-center gap-3">
           <button
             onClick={onExit}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs transition-colors cursor-pointer"
+            style={{
+              backgroundColor: skin.secondaryButtonBg,
+              borderColor: skin.secondaryButtonBorder,
+              color: skin.secondaryButtonText,
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-bold text-xs transition-colors hover:scale-105 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>{t.gamePlay.giveUp}</span>
@@ -358,9 +369,16 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
         {/* Center: Live Stats HUD (Timer / Hearts / Boss) */}
         <div className="flex items-center gap-2 sm:gap-3 font-mono font-bold text-xs sm:text-sm flex-wrap">
           {/* Active Skin Badge */}
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
+          <div
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs"
+            style={{
+              backgroundColor: skin.badgeBg,
+              borderColor: skin.badgeText,
+              color: skin.badgeText,
+            }}
+          >
             <span>{skin.icon}</span>
-            <span className="text-slate-300 font-sans font-semibold text-[11px]">
+            <span className="font-sans font-semibold text-[11px]">
               {language === 'de' ? skin.nameDe : skin.nameEn}
             </span>
           </div>
@@ -421,17 +439,34 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
       </div>
 
       {/* Main Play Problem Card */}
-      <div className="bg-slate-900/90 rounded-3xl border border-indigo-500/30 p-5 sm:p-8 shadow-[0_0_40px_rgba(99,102,241,0.15)] space-y-6 relative overflow-hidden">
+      <div
+        className="rounded-3xl border p-5 sm:p-8 space-y-6 relative overflow-hidden transition-all"
+        style={{
+          backgroundColor: skin.cardBg,
+          borderColor: skin.cardBorder,
+          boxShadow: `0 0 35px ${skin.glowRgba}`,
+        }}
+      >
         {/* Laser Top Accent */}
-        <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-indigo-400 to-transparent" />
+        <div
+          className="absolute top-0 left-0 w-full h-1"
+          style={{ background: skin.tabActiveGradient }}
+        />
 
         {/* Difficulty & Topic Meta Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: skin.cardBorder }}>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-mono font-bold text-xs">
+            <span
+              className="px-2.5 py-1 rounded-lg border font-mono font-bold text-xs"
+              style={{
+                backgroundColor: skin.badgeBg,
+                borderColor: skin.badgeText,
+                color: skin.badgeText,
+              }}
+            >
               Level {currentProblem.difficulty || 1}/5
             </span>
-            <span className="text-xs text-slate-400 font-mono uppercase tracking-wider">
+            <span className="text-xs text-slate-300/80 font-mono uppercase tracking-wider">
               {currentProblem.topic.replace(/_/g, ' ')}
             </span>
           </div>
@@ -454,12 +489,18 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
         )}
 
         {/* Question Text Panel */}
-        <div className="bg-slate-950/75 border border-slate-800/90 rounded-2xl p-5 sm:p-7 text-center space-y-2 shadow-inner">
+        <div
+          className="border rounded-2xl p-5 sm:p-7 text-center space-y-2 shadow-inner transition-all"
+          style={{
+            backgroundColor: skin.modeCardBg,
+            borderColor: skin.modeCardBorder,
+          }}
+        >
           <div className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
             {currentProblem.question}
           </div>
           {currentProblem.subtext && (
-            <p className="text-xs sm:text-sm text-cyan-300/80 font-mono max-w-md mx-auto">
+            <p className="text-xs sm:text-sm font-mono max-w-md mx-auto" style={{ color: skin.highlightAccent }}>
               {currentProblem.subtext}
             </p>
           )}
@@ -472,19 +513,43 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
             const isCorrect = String(option).trim().toLowerCase() === String(currentProblem.correctAnswer).trim().toLowerCase();
             const isDisabled = disabledOptions.includes(option);
 
-            let btnStyle =
-              'bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700 hover:border-indigo-500/60 text-white hover:shadow-[0_0_20px_rgba(99,102,241,0.25)]';
+            let customStyle: React.CSSProperties = {
+              backgroundColor: skin.modeCardBg,
+              borderColor: skin.modeCardBorder,
+              color: '#ffffff',
+            };
 
             if (feedbackState === 'correct' && isSelected) {
-              btnStyle = 'bg-emerald-600 border border-emerald-400 text-white shadow-[0_0_25px_rgba(16,185,129,0.5)] scale-102';
+              customStyle = {
+                background: 'linear-gradient(135deg, #059669, #10b981)',
+                borderColor: '#34d399',
+                color: '#ffffff',
+                boxShadow: '0 0 25px rgba(16, 185, 129, 0.5)',
+              };
             } else if (feedbackState === 'wrong' && isSelected) {
-              btnStyle = 'bg-rose-600 border border-rose-400 text-white shadow-[0_0_25px_rgba(244,63,94,0.5)]';
+              customStyle = {
+                background: 'linear-gradient(135deg, #dc2626, #ef4444)',
+                borderColor: '#f87171',
+                color: '#ffffff',
+                boxShadow: '0 0 25px rgba(239, 68, 68, 0.5)',
+              };
             } else if (feedbackState === 'wrong' && isCorrect) {
-              btnStyle = 'bg-emerald-950 border border-emerald-400 text-emerald-200 animate-pulse';
+              customStyle = {
+                background: 'rgba(6, 78, 59, 0.8)',
+                borderColor: '#34d399',
+                color: '#a7f3d0',
+              };
             }
 
             if (isDisabled) {
-              btnStyle = 'opacity-25 pointer-events-none bg-slate-950 border-slate-800 text-slate-600 line-through';
+              customStyle = {
+                opacity: 0.25,
+                pointerEvents: 'none',
+                backgroundColor: 'rgba(15, 23, 42, 0.4)',
+                borderColor: 'rgba(51, 65, 85, 0.5)',
+                color: '#64748b',
+                textDecoration: 'line-through',
+              };
             }
 
             return (
@@ -492,9 +557,17 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
                 key={idx}
                 disabled={feedbackState !== 'idle' || isDisabled}
                 onClick={() => handleOptionClick(option)}
-                className={`relative py-4 sm:py-5 px-6 rounded-2xl font-bold text-lg sm:text-xl transition-all active:scale-95 flex items-center justify-between shadow-md cursor-pointer ${btnStyle}`}
+                style={customStyle}
+                className="relative py-4 sm:py-5 px-6 rounded-2xl font-bold text-lg sm:text-xl border transition-all active:scale-95 flex items-center justify-between shadow-md cursor-pointer hover:scale-[1.02]"
               >
-                <span className="w-8 h-8 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-center text-xs font-mono font-bold text-cyan-400">
+                <span
+                  className="w-8 h-8 rounded-xl border flex items-center justify-center text-xs font-mono font-bold"
+                  style={{
+                    backgroundColor: skin.badgeBg,
+                    borderColor: skin.badgeText,
+                    color: skin.badgeText,
+                  }}
+                >
                   {idx + 1}
                 </span>
                 <span className="flex-1 text-center font-medium">{option}</span>

@@ -24,11 +24,15 @@ import {
   Award,
   LogOut,
   User,
+  RotateCcw,
 } from 'lucide-react';
-import { GradeLevel, KidProfile, PlayerProfile } from '../types';
+import { GradeLevel, KidProfile, PlayerProfile, SkinTheme } from '../types';
 import { soundFx } from '../utils/audio';
 import { useLanguage } from '../context/LanguageContext';
 import { getLanguageFlag } from '../utils/subjectEngines';
+import { getSkinTheme } from '../utils/skins';
+import { DEFAULT_PARENT_CONFIG } from '../utils/storage';
+import { LocalizationModal } from './Localization/LocalizationModal';
 
 interface NavbarProps {
   profile: PlayerProfile;
@@ -51,11 +55,12 @@ interface NavbarProps {
   userEmail?: string | null;
   isChildMode?: boolean;
   onSignOut?: () => void;
+  skin?: SkinTheme;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  profile,
-  kids = [],
+  profile: propProfile,
+  kids: propKids = [],
   activeTab,
   onSelectTab,
   setActiveTab,
@@ -74,11 +79,28 @@ export const Navbar: React.FC<NavbarProps> = ({
   userEmail,
   isChildMode = false,
   onSignOut,
+  skin: propSkin,
 }) => {
-  const { language, setLanguage, t } = useLanguage();
+  const profile: PlayerProfile =
+    propProfile && propProfile.id && propProfile.name
+      ? propProfile
+      : (propKids?.find((k) => k && k.id && k.name) || DEFAULT_PARENT_CONFIG.kids[0]);
+  const kids: KidProfile[] = (propKids || []).filter((k): k is KidProfile => Boolean(k && k.id && k.name));
+  const {
+    language,
+    unitSystem,
+    localizationMode,
+    setLanguage,
+    setUnitSystem,
+    setAutodetect,
+    t,
+  } = useLanguage();
   const [soundOn, setSoundOn] = useState(!isMuted && soundFx.isEnabled());
   const [showKidDropdown, setShowKidDropdown] = useState(false);
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
+  const [showLocalizationModal, setShowLocalizationModal] = useState(false);
+
+  const skin = propSkin || getSkinTheme(profile.skinId);
 
   const handleSoundToggle = () => {
     soundFx.playPop();
@@ -102,7 +124,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   const hasUnclaimedQuests = profile.dailyQuests.some((q) => q.completed && !q.claimed);
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 shadow-xl">
+    <header
+      className="sticky top-0 z-40 backdrop-blur-md border-b shadow-xl transition-all duration-300"
+      style={{
+        backgroundColor: skin.navBg,
+        borderColor: skin.navBorder,
+        boxShadow: `0 4px 20px -2px ${skin.glowRgba || 'rgba(0,0,0,0.5)'}`,
+      }}
+    >
       <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4">
         {/* Left: Brand Logo & Kid Avatar Switcher */}
         <div className="flex items-center gap-2 sm:gap-3">
@@ -111,7 +140,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-2 cursor-pointer select-none group"
             onClick={() => handleTabChange('math')}
           >
-            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-linear-to-br from-cyan-400 via-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.3)] group-hover:scale-105 transition-transform">
+            <div
+              className="w-9 h-9 sm:w-10 sm:h-10 bg-linear-to-br rounded-xl flex items-center justify-center transition-transform group-hover:scale-105"
+              style={{
+                background: `linear-gradient(135deg, ${skin.previewColors[0]}, ${skin.previewColors[1]})`,
+                boxShadow: `0 0 15px ${skin.glowRgba}`,
+              }}
+            >
               <span className="text-lg sm:text-xl font-black italic tracking-tighter text-white">bB</span>
             </div>
             <div className="hidden sm:flex flex-col">
@@ -121,69 +156,147 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {t.nav.pro}
                 </span>
               </div>
-              <span className="text-[9px] text-cyan-400 font-mono uppercase tracking-widest font-semibold">
+              <span className="text-[9px] font-mono uppercase tracking-widest font-semibold" style={{ color: skin.glowColor }}>
                 {t.nav.brandSub}
               </span>
             </div>
           </div>
 
-          {/* Active Kid Profile Quick Switcher */}
+          {/* Active Kid Profile Quick Switcher (Parents only for switching; Static identity badge for Kids) */}
           <div className="relative">
-            <button
-              id="nav-kid-switcher"
-              onClick={() => setShowKidDropdown(!showKidDropdown)}
-              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-950/80 border border-indigo-500/40 hover:border-indigo-400 text-white transition-all shadow-inner cursor-pointer"
-              title={t.nav.switchKid}
-            >
-              <span className="text-base sm:text-lg">{profile.avatar || '🚀'}</span>
-              <div className="text-left">
-                <span className="text-xs font-bold block leading-tight truncate max-w-[80px] sm:max-w-[110px]">
-                  {profile.name}
-                </span>
-                <span className="text-[10px] text-indigo-300 font-mono flex items-center gap-1">
-                  <span>Lvl {profile.level}</span>
-                  {profile.targetLanguage && (
-                    <span className="hidden sm:inline">• {getLanguageFlag(profile.targetLanguage)}</span>
-                  )}
-                </span>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-
-            {/* Dropdown Menu */}
-            {showKidDropdown && (
-              <div className="absolute left-0 mt-2 w-56 rounded-2xl bg-slate-900 border border-indigo-500/40 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
-                <div className="px-2 py-1.5 text-[10px] uppercase font-mono tracking-wider text-slate-400 border-b border-slate-800">
-                  {t.nav.switchKid}
+            {isChildMode ? (
+              <div
+                id="nav-kid-badge"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-white transition-all shadow-inner select-none"
+                style={{
+                  backgroundColor: 'rgba(5, 10, 25, 0.75)',
+                  borderColor: skin.navBorder,
+                  boxShadow: `0 0 12px -2px ${skin.glowRgba}`,
+                }}
+              >
+                <div className="relative">
+                  <span className="text-base sm:text-lg">{profile.avatar || '🚀'}</span>
+                  <span className="absolute -bottom-1 -right-1 text-[10px] leading-none" title={skin.nameDe}>
+                    {skin.icon}
+                  </span>
                 </div>
-                <div className="space-y-1 my-1 max-h-48 overflow-y-auto">
-                  {kids.map((kid) => (
-                    <button
-                      key={kid.id}
-                      onClick={() => {
-                        setShowKidDropdown(false);
-                        if (onSwitchKid) onSwitchKid(kid.id);
-                      }}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
-                        kid.id === profile.id
-                          ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40'
-                          : 'text-slate-300 hover:bg-slate-800'
-                      }`}
+                <div className="text-left">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold block leading-tight truncate max-w-[80px] sm:max-w-[110px]">
+                      {profile.name}
+                    </span>
+                    <span
+                      className="text-[8px] px-1 py-0.2 rounded font-mono uppercase font-bold"
+                      style={{ backgroundColor: skin.badgeBg, color: skin.badgeText }}
                     >
-                      <div className="flex items-center gap-2">
-                        <span>{kid.avatar}</span>
-                        <span className="font-bold">{kid.name}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono">Lvl {kid.level}</span>
-                    </button>
-                  ))}
+                      {skin.badge}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono flex items-center gap-1 opacity-90" style={{ color: skin.badgeText }}>
+                    <span>Lvl {profile.level}</span>
+                    {profile.targetLanguage && (
+                      <span className="hidden sm:inline">• {getLanguageFlag(profile.targetLanguage)}</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <button
+                id="nav-kid-switcher"
+                onClick={() => setShowKidDropdown(!showKidDropdown)}
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-white transition-all shadow-inner cursor-pointer"
+                style={{
+                  backgroundColor: 'rgba(5, 10, 25, 0.75)',
+                  borderColor: skin.navBorder,
+                  boxShadow: `0 0 12px -2px ${skin.glowRgba}`,
+                }}
+                title={t.nav.switchKid}
+              >
+                <div className="relative">
+                  <span className="text-base sm:text-lg">{profile.avatar || '🚀'}</span>
+                  <span className="absolute -bottom-1 -right-1 text-[10px] leading-none" title={skin.nameDe}>
+                    {skin.icon}
+                  </span>
+                </div>
+                <div className="text-left">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold block leading-tight truncate max-w-[80px] sm:max-w-[110px]">
+                      {profile.name}
+                    </span>
+                    <span
+                      className="text-[8px] px-1 py-0.2 rounded font-mono uppercase font-bold"
+                      style={{ backgroundColor: skin.badgeBg, color: skin.badgeText }}
+                    >
+                      {skin.badge}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono flex items-center gap-1 opacity-90" style={{ color: skin.badgeText }}>
+                    <span>Lvl {profile.level}</span>
+                    {profile.targetLanguage && (
+                      <span className="hidden sm:inline">• {getLanguageFlag(profile.targetLanguage)}</span>
+                    )}
+                  </span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+            )}
+
+            {/* Dropdown Menu (Only shown for Parent/Admin users) */}
+            {!isChildMode && showKidDropdown && (
+              <div
+                className="absolute left-0 mt-2 w-64 rounded-2xl border shadow-2xl p-2.5 z-50 animate-in fade-in zoom-in-95"
+                style={{ backgroundColor: skin.navBg, borderColor: skin.navBorder }}
+              >
+                <div className="px-2 py-1.5 text-[10px] uppercase font-mono tracking-wider text-slate-400 border-b border-slate-800/80 flex items-center justify-between">
+                  <span>{t.nav.switchKid}</span>
+                  <span className="text-[9px] text-cyan-300 font-bold">{kids.length} Profile</span>
+                </div>
+                <div className="space-y-1 my-1.5 max-h-56 overflow-y-auto pr-1">
+                  {kids.map((kid) => {
+                    const kidSkin = getSkinTheme(kid.skinId);
+                    const isCurrent = kid.id === profile.id;
+                    return (
+                      <button
+                        key={kid.id}
+                        onClick={() => {
+                          setShowKidDropdown(false);
+                          if (onSwitchKid) onSwitchKid(kid.id);
+                        }}
+                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                          isCurrent
+                            ? 'border shadow-md'
+                            : 'text-slate-300 hover:bg-slate-800/60 border border-transparent'
+                        }`}
+                        style={
+                          isCurrent
+                            ? {
+                                backgroundColor: kidSkin.badgeBg,
+                                borderColor: kidSkin.glowColor,
+                                color: '#ffffff',
+                              }
+                            : {}
+                        }
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{kid.avatar}</span>
+                          <div className="text-left">
+                            <span className="font-bold block leading-tight">{kid.name}</span>
+                            <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
+                              <span>{kidSkin.icon} {language === 'de' ? kidSkin.nameDe : kidSkin.nameEn}</span>
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono">Lvl {kid.level}</span>
+                      </button>
+                    );
+                  })}
                 </div>
                 <button
                   onClick={() => {
                     setShowKidDropdown(false);
                     onOpenParentCenter();
                   }}
-                  className="w-full mt-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 text-indigo-200 text-xs font-bold border border-indigo-500/40 transition-colors cursor-pointer"
+                  className="w-full mt-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 text-xs font-bold border border-indigo-500/40 transition-colors cursor-pointer shadow-sm"
                 >
                   <Shield className="w-3.5 h-3.5 text-indigo-400" />
                   <span>{t.parentCenter.title}</span>
@@ -194,13 +307,29 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Center: Desktop Navigation Tabs */}
-        <div className="hidden lg:flex items-center bg-slate-950/70 p-1 rounded-xl border border-slate-800/80">
+        <div
+          className="hidden lg:flex items-center p-1 rounded-xl border transition-all"
+          style={{
+            backgroundColor: skin.cardBg,
+            borderColor: skin.cardBorder,
+          }}
+        >
           <button
             onClick={() => handleTabChange('math')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            style={
               activeTab === 'math'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
+                ? {
+                    background: skin.tabActiveGradient,
+                    borderColor: skin.tabActiveBorder,
+                    boxShadow: skin.tabActiveGlow,
+                    color: skin.tabActiveText,
+                  }
+                : {
+                    color: skin.tabInactiveText,
+                  }
+            }
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+              activeTab === 'math' ? 'border-transparent shadow-md' : 'border-transparent hover:text-white'
             }`}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
@@ -208,24 +337,44 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
           <button
             onClick={() => handleTabChange('achievements')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            style={
               activeTab === 'achievements'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
+                ? {
+                    background: skin.tabActiveGradient,
+                    borderColor: skin.tabActiveBorder,
+                    boxShadow: skin.tabActiveGlow,
+                    color: skin.tabActiveText,
+                  }
+                : {
+                    color: skin.tabInactiveText,
+                  }
+            }
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+              activeTab === 'achievements' ? 'border-transparent shadow-md' : 'border-transparent hover:text-white'
             }`}
           >
-            <Trophy className="w-3.5 h-3.5 text-amber-400" />
+            <Trophy className="w-3.5 h-3.5" />
             <span>{t.nav.trophiesTab}</span>
           </button>
           <button
             onClick={() => handleTabChange('openspec')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            style={
               activeTab === 'openspec'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
+                ? {
+                    background: skin.tabActiveGradient,
+                    borderColor: skin.tabActiveBorder,
+                    boxShadow: skin.tabActiveGlow,
+                    color: skin.tabActiveText,
+                  }
+                : {
+                    color: skin.tabInactiveText,
+                  }
+            }
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+              activeTab === 'openspec' ? 'border-transparent shadow-md' : 'border-transparent hover:text-white'
             }`}
           >
-            <FileCode2 className="w-3.5 h-3.5 text-emerald-400" />
+            <FileCode2 className="w-3.5 h-3.5" />
             <span>OpenSpec</span>
           </button>
         </div>
@@ -233,22 +382,28 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Right: Currency HUD, Reward Actions & Settings Menu */}
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           {/* Unified Compact Player Currencies Capsule */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 bg-slate-950/80 border border-slate-800/90 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl shadow-inner text-xs font-mono font-bold">
+          <div
+            className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl shadow-inner text-xs font-mono font-bold border transition-all"
+            style={{
+              backgroundColor: skin.cardBg,
+              borderColor: skin.cardBorder,
+            }}
+          >
             {/* Streak */}
             <div className="flex items-center gap-1 text-orange-400" title="Tages-Serie">
               <Flame className="w-3.5 h-3.5 text-orange-400 fill-orange-400/30 animate-pulse" />
               <span>{profile.streakDays}d</span>
             </div>
-            <span className="text-slate-700">|</span>
+            <span className="opacity-30 text-white">|</span>
             {/* Coins */}
             <div className="flex items-center gap-1 text-amber-400" title="Münzen">
               <Coins className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30" />
               <span>{profile.coins}</span>
             </div>
-            <span className="text-slate-700">|</span>
+            <span className="opacity-30 text-white">|</span>
             {/* Gems */}
-            <div className="flex items-center gap-1 text-cyan-400" title="Edelsteine">
-              <Gem className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400/30" />
+            <div className="flex items-center gap-1" style={{ color: skin.highlightAccent }} title="Edelsteine">
+              <Gem className="w-3.5 h-3.5 fill-current opacity-80" />
               <span>{profile.gems}</span>
             </div>
           </div>
@@ -260,7 +415,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               soundFx.playPop();
               onOpenDailyQuests();
             }}
-            className="relative p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700/60 hover:border-pink-500/50 text-slate-200 transition-all shadow-md cursor-pointer"
+            style={{
+              backgroundColor: skin.secondaryButtonBg,
+              borderColor: skin.secondaryButtonBorder,
+            }}
+            className="relative p-2 rounded-xl border text-slate-200 transition-all shadow-md hover:scale-105 cursor-pointer"
             title={t.nav.dailyQuests}
           >
             <Gift className="w-4 h-4 text-pink-400" />
@@ -280,7 +439,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               if (onOpenChest) onOpenChest();
               else if (onOpenRewardChest) onOpenRewardChest();
             }}
-            className="p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700/60 hover:border-amber-500/50 text-amber-400 transition-all shadow-md cursor-pointer"
+            style={{
+              backgroundColor: skin.secondaryButtonBg,
+              borderColor: skin.secondaryButtonBorder,
+            }}
+            className="p-2 rounded-xl border text-amber-400 transition-all shadow-md hover:scale-105 cursor-pointer"
             title={t.nav.mysteryChest}
           >
             <Sparkles className="w-4 h-4 text-amber-400" />
@@ -293,10 +456,38 @@ export const Navbar: React.FC<NavbarProps> = ({
               soundFx.playPop();
               onOpenShop();
             }}
-            className="p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700/60 hover:border-indigo-500/50 text-slate-200 transition-all shadow-md cursor-pointer"
+            style={{
+              backgroundColor: skin.secondaryButtonBg,
+              borderColor: skin.secondaryButtonBorder,
+              color: skin.secondaryButtonText,
+            }}
+            className="p-2 rounded-xl border transition-all shadow-md hover:scale-105 cursor-pointer"
             title={t.nav.shop}
           >
-            <ShoppingBag className="w-4 h-4 text-indigo-400" />
+            <ShoppingBag className="w-4 h-4" />
+          </button>
+
+          {/* Quick Localization & Units Pill Button */}
+          <button
+            id="nav-localization-btn"
+            onClick={() => {
+              soundFx.playPop();
+              setShowLocalizationModal(true);
+            }}
+            style={{
+              backgroundColor: skin.secondaryButtonBg,
+              borderColor: skin.secondaryButtonBorder,
+              color: skin.secondaryButtonText,
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all shadow-md hover:scale-105 cursor-pointer text-xs font-bold"
+            title={language === 'de' ? 'Sprache & Maßeinheiten anpassen (Auto / Manuell)' : 'Customize Language & Units (Auto / Manual)'}
+          >
+            <Globe className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="uppercase text-[11px] font-mono">{language}</span>
+            <span className="text-[10px] opacity-70 font-mono">({unitSystem === 'metric' ? 'm/kg' : 'ft/lb'})</span>
+            {localizationMode === 'auto' && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Auto-detect from browser" />
+            )}
           </button>
 
           {/* Menu & Settings Toggle Button (Consolidates Audio, Lang, Skins, Parents) */}
@@ -306,14 +497,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               soundFx.playPop();
               setShowSettingsDrawer(!showSettingsDrawer);
             }}
-            className={`p-2 rounded-xl border transition-all shadow-md cursor-pointer ${
+            style={
               showSettingsDrawer
-                ? 'bg-indigo-600 text-white border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.5)]'
-                : 'bg-slate-800/90 hover:bg-slate-700 border-slate-700/60 text-slate-200'
-            }`}
+                ? {
+                    background: skin.primaryButtonGradient,
+                    borderColor: skin.primaryButtonBorder,
+                    boxShadow: skin.primaryButtonGlow,
+                    color: skin.primaryButtonText,
+                  }
+                : {
+                    backgroundColor: skin.secondaryButtonBg,
+                    borderColor: skin.secondaryButtonBorder,
+                    color: skin.secondaryButtonText,
+                  }
+            }
+            className="p-2 rounded-xl border transition-all shadow-md hover:scale-105 cursor-pointer"
             title={t.nav.menu}
           >
-            {showSettingsDrawer ? <X className="w-4 h-4" /> : <SlidersHorizontal className="w-4 h-4 text-cyan-400" />}
+            {showSettingsDrawer ? <X className="w-4 h-4" /> : <SlidersHorizontal className="w-4 h-4" />}
           </button>
         </div>
       </div>
@@ -391,40 +592,141 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 </button>
 
-                {/* App Mother Tongue Language Switcher */}
-                <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-bold text-white">
-                    <Globe className="w-4 h-4 text-cyan-400" />
-                    <span>{t.nav.language}</span>
+                {/* App Language & Measurement Units System */}
+                <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-white">
+                      <Globe className="w-4 h-4 text-cyan-400" />
+                      <span>{language === 'de' ? 'Sprache & Einheiten' : 'Language & Units'}</span>
+                    </div>
+                    <span
+                      className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                        localizationMode === 'auto'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                      }`}
+                    >
+                      {localizationMode === 'auto'
+                        ? (language === 'de' ? 'Auto (Browser)' : 'Auto (Browser)')
+                        : (language === 'de' ? 'Manuell' : 'Manual')}
+                    </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+
+                  {/* Language switch */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>{language === 'de' ? 'App-Sprache' : 'App Language'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundFx.playPop();
+                          setLanguage('de');
+                        }}
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                          language === 'de'
+                            ? 'bg-cyan-600/30 border-cyan-400 text-cyan-200 shadow-sm'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>🇩🇪</span>
+                        <span>Deutsch</span>
+                        {language === 'de' && <Check className="w-3 h-3 text-cyan-400" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundFx.playPop();
+                          setLanguage('en');
+                        }}
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                          language === 'en'
+                            ? 'bg-cyan-600/30 border-cyan-400 text-cyan-200 shadow-sm'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>🇬🇧</span>
+                        <span>English</span>
+                        {language === 'en' && <Check className="w-3 h-3 text-cyan-400" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Units switch */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>{language === 'de' ? 'Maßeinheiten' : 'Units System'}</span>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        {unitSystem === 'metric' ? 'm, km, kg, °C' : 'ft, mi, lbs, °F'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundFx.playPop();
+                          setUnitSystem('metric');
+                        }}
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                          unitSystem === 'metric'
+                            ? 'bg-indigo-600/30 border-indigo-400 text-indigo-200 shadow-sm'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>📏</span>
+                        <span>{language === 'de' ? 'Metrisch' : 'Metric'}</span>
+                        {unitSystem === 'metric' && <Check className="w-3 h-3 text-indigo-400" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundFx.playPop();
+                          setUnitSystem('imperial');
+                        }}
+                        className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                          unitSystem === 'imperial'
+                            ? 'bg-indigo-600/30 border-indigo-400 text-indigo-200 shadow-sm'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>📐</span>
+                        <span>{language === 'de' ? 'Imperial' : 'Imperial'}</span>
+                        {unitSystem === 'imperial' && <Check className="w-3 h-3 text-indigo-400" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Reset to browser autodetect button or open details */}
+                  <div className="pt-1 flex items-center justify-between gap-2 border-t border-slate-800/80">
+                    {localizationMode === 'manual' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundFx.playCorrect();
+                          setAutodetect();
+                        }}
+                        className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold cursor-pointer underline underline-offset-2"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>{language === 'de' ? 'Browser-Auto' : 'Auto-detect'}</span>
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                        <span>✓</span>
+                        <span>{language === 'de' ? 'Browser-Einstellung aktiv' : 'Browser auto active'}</span>
+                      </span>
+                    )}
+
                     <button
+                      type="button"
                       onClick={() => {
-                        soundFx.playPop();
-                        setLanguage('de');
+                        setShowSettingsDrawer(false);
+                        setShowLocalizationModal(true);
                       }}
-                      className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
-                        language === 'de'
-                          ? 'bg-cyan-600/30 border-cyan-400 text-cyan-300 shadow-sm'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
+                      className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer font-semibold ml-auto"
                     >
-                      <span>🇩🇪</span>
-                      <span>Deutsch</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        soundFx.playPop();
-                        setLanguage('en');
-                      }}
-                      className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
-                        language === 'en'
-                          ? 'bg-cyan-600/30 border-cyan-400 text-cyan-300 shadow-sm'
-                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <span>🇬🇧</span>
-                      <span>English</span>
+                      <span>{language === 'de' ? 'Details...' : 'Details...'}</span>
                     </button>
                   </div>
                 </div>
@@ -436,16 +738,30 @@ export const Navbar: React.FC<NavbarProps> = ({
                       setShowSettingsDrawer(false);
                       onOpenSkins();
                     }}
-                    className="w-full flex items-center justify-between p-3 rounded-xl bg-fuchsia-950/30 hover:bg-fuchsia-900/40 border border-fuchsia-500/30 text-left transition-colors cursor-pointer"
+                    className="w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all cursor-pointer shadow-sm"
+                    style={{
+                      backgroundColor: skin.badgeBg,
+                      borderColor: skin.glowColor,
+                    }}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Palette className="w-4 h-4 text-fuchsia-400" />
+                      <Palette className="w-4 h-4" style={{ color: skin.glowColor }} />
                       <div>
-                        <span className="text-xs font-bold text-white block">Design & Skins</span>
-                        <span className="text-[10px] text-fuchsia-300">Cyber Neon, Pixel Retro & mehr</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-white block">Design & Skins</span>
+                          <span
+                            className="text-[9px] font-mono uppercase font-bold px-1.5 py-0.2 rounded"
+                            style={{ backgroundColor: skin.cardBg, color: skin.badgeText }}
+                          >
+                            {skin.icon} {language === 'de' ? skin.nameDe : skin.nameEn}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-300">
+                          {language === 'de' ? skin.descriptionDe : skin.descriptionEn}
+                        </span>
                       </div>
                     </div>
-                    <span className="text-xs text-fuchsia-400 font-bold">&rarr;</span>
+                    <span className="text-xs font-bold" style={{ color: skin.glowColor }}>&rarr;</span>
                   </button>
                 )}
               </div>
@@ -561,6 +877,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       )}
+
+      {/* Full Localization & Measurement Units Modal */}
+      <LocalizationModal
+        isOpen={showLocalizationModal}
+        onClose={() => setShowLocalizationModal(false)}
+      />
     </header>
   );
 };

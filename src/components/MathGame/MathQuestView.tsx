@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Play,
   BookOpen,
@@ -14,63 +14,125 @@ import {
   ChevronRight,
   Zap,
   RotateCcw,
+  Lock,
+  Award,
 } from 'lucide-react';
 import {
   GameMode,
+  ParentConfig,
   PlayerProfile,
+  SkinTheme,
   SubjectArea,
   TargetLearnLanguage,
+  ChildTest,
 } from '../../types';
 import { MascotBot } from '../MascotBot';
 import { soundFx } from '../../utils/audio';
 import { useLanguage } from '../../context/LanguageContext';
+import { getSkinTheme } from '../../utils/skins';
 import {
   getLanguageDisplayName,
   getLanguageFlag,
   speakWord,
   getLangLocale,
 } from '../../utils/subjectEngines';
+import { loadScannedBatches, loadCustomQuestions, DEFAULT_PARENT_CONFIG } from '../../utils/storage';
 
 interface MathQuestViewProps {
   profile: PlayerProfile;
+  config?: ParentConfig;
+  skin?: SkinTheme;
   activeSubject?: SubjectArea;
+  selectedTopic?: string;
+  onSelectTopic?: (topic: string) => void;
   onSelectSubject?: (subject: SubjectArea) => void;
   onStartGame: (mode: GameMode, topic?: string, subject?: SubjectArea, targetLang?: TargetLearnLanguage) => void;
   onOpenAiStory: () => void;
   onUpdateTargetLanguage?: (lang: TargetLearnLanguage) => void;
+  onStartTest?: (test: ChildTest) => void;
 }
 
 export const MathQuestView: React.FC<MathQuestViewProps> = ({
-  profile,
+  profile: propProfile,
+  config,
+  skin: propSkin,
   activeSubject: initialSubject = 'math',
+  selectedTopic: propSelectedTopic,
+  onSelectTopic,
   onSelectSubject,
   onStartGame,
   onOpenAiStory,
   onUpdateTargetLanguage,
+  onStartTest,
 }) => {
+  const safeProfile: PlayerProfile = propProfile && propProfile.id && propProfile.name
+    ? propProfile
+    : (config?.kids?.find((k) => k && k.id && k.name) || DEFAULT_PARENT_CONFIG.kids[0]);
+  const profile = safeProfile;
+
   const { t, language } = useLanguage();
+  const skin = propSkin || getSkinTheme(safeProfile.skinId);
   const isGerman = language === 'de';
-  const isPrimary = profile.gradeLevel === 'primary';
+  const isPrimary = safeProfile.gradeLevel === 'primary';
 
   // High-level hub mode: 'subjects' (Schulfächer) vs 'brain_labs' (Denk- & Reflexspiele)
   const [hubMode, setHubMode] = useState<'subjects' | 'brain_labs'>('subjects');
   const [currentSubject, setCurrentSubject] = useState<SubjectArea>(initialSubject);
-  const [selectedTopic, setSelectedTopic] = useState<string>('all');
-  const [targetLanguage, setTargetLanguage] = useState<TargetLearnLanguage>(
-    profile.targetLanguage || (language === 'de' ? 'en' : 'fr')
+  const [selectedTopic, setSelectedTopic] = useState<string>(
+    propSelectedTopic || (initialSubject === 'languages' ? 'English Book Unit 1' : 'all')
   );
+  const [targetLanguage, setTargetLanguage] = useState<TargetLearnLanguage>(
+    safeProfile.targetLanguage || (language === 'de' ? 'en' : 'fr')
+  );
+
+  // Sync initialSubject prop changes from outside
+  useEffect(() => {
+    if (initialSubject && initialSubject !== currentSubject) {
+      setCurrentSubject(initialSubject);
+    }
+  }, [initialSubject]);
+
+  // Sync propSelectedTopic prop changes from outside
+  useEffect(() => {
+    if (propSelectedTopic && propSelectedTopic !== selectedTopic) {
+      setSelectedTopic(propSelectedTopic);
+    }
+  }, [propSelectedTopic]);
+
+  // When switching to languages (Language Academy), ensure 'English Book Unit 1' is selected
+  // if topic is 'all' or empty, so Linus immediately sees the focus topic & quiz!
+  useEffect(() => {
+    if (currentSubject === 'languages' && (selectedTopic === 'all' || !selectedTopic)) {
+      setSelectedTopic('English Book Unit 1');
+      if (onSelectTopic) onSelectTopic('English Book Unit 1');
+    }
+  }, [currentSubject]);
 
   const handleSubjectChange = (subj: SubjectArea) => {
     soundFx.playPop();
     setCurrentSubject(subj);
-    setSelectedTopic('all');
+    const nextTopic = subj === 'languages' ? 'English Book Unit 1' : 'all';
+    setSelectedTopic(nextTopic);
     if (onSelectSubject) onSelectSubject(subj);
+    if (onSelectTopic) onSelectTopic(nextTopic);
+  };
+
+  const handleTopicChange = (newTopic: string) => {
+    soundFx.playPop();
+    setSelectedTopic(newTopic);
+    if (onSelectTopic) onSelectTopic(newTopic);
   };
 
   const handleTargetLanguageChange = (lang: TargetLearnLanguage) => {
     soundFx.playPop();
     setTargetLanguage(lang);
     if (onUpdateTargetLanguage) onUpdateTargetLanguage(lang);
+  };
+
+  const isModeDisabled = (mode: string): boolean => {
+    if (profile.disabledGames && profile.disabledGames.includes(mode as any)) return true;
+    if (config?.allowedGameModes && !config.allowedGameModes.includes(mode as any)) return true;
+    return false;
   };
 
   // Topics per Subject
@@ -138,7 +200,80 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
     { id: 'grammar_adjectives_prepositions', name: t.topics.grammar_adjectives_prepositions, icon: '🧭' },
   ];
 
-  const currentTopicList =
+  // Dynamically load custom focus topics for active subject from scanned batches, custom questions & tests
+  const customFocusTopics = useMemo(() => {
+    const batches = loadScannedBatches();
+    const customQuestions = loadCustomQuestions();
+    const configTests = config?.tests || [];
+
+    const foundTopics = new Map<
+      string,
+      { id: string; name: string; icon: string; isCustom: boolean; badge?: string; count?: number }
+    >();
+
+    // 1. Scanned Batches
+    (batches || []).filter(Boolean).forEach((b) => {
+      if (b && b.subject === currentSubject && b.topic) {
+        if (!b.assignedKidId || b.assignedKidId === 'all' || b.assignedKidId === safeProfile.id) {
+          foundTopics.set(b.topic, {
+            id: b.topic,
+            name: b.topic,
+            icon: '📖',
+            isCustom: true,
+            badge: isGerman ? 'Schulbuch' : 'Textbook',
+            count: b.extractedQuestionsCount,
+          });
+        }
+      }
+    });
+
+    // 2. Custom Questions
+    (customQuestions || []).filter(Boolean).forEach((q) => {
+      if (q && q.subject === currentSubject && q.topic && !foundTopics.has(q.topic)) {
+        if (!q.assignedKidId || q.assignedKidId === 'all' || q.assignedKidId === safeProfile.id) {
+          foundTopics.set(q.topic, {
+            id: q.topic,
+            name: q.topic,
+            icon: '📖',
+            isCustom: true,
+            badge: isGerman ? 'Fokus' : 'Focus',
+          });
+        }
+      }
+    });
+
+    // 3. Tests
+    (configTests || []).filter(Boolean).forEach((t) => {
+      if (t && t.subject === currentSubject && t.topic && !foundTopics.has(t.topic)) {
+        if (t.assignedKidIds?.includes('all') || t.assignedKidIds?.includes(safeProfile.id)) {
+          foundTopics.set(t.topic, {
+            id: t.topic,
+            name: t.topic,
+            icon: '🏆',
+            isCustom: true,
+            badge: isGerman ? 'Schultest' : 'School Test',
+            count: t.questions?.length,
+          });
+        }
+      }
+    });
+
+    // Always ensure English Book Unit 1 is present in Language Academy
+    if (currentSubject === 'languages' && !foundTopics.has('English Book Unit 1')) {
+      foundTopics.set('English Book Unit 1', {
+        id: 'English Book Unit 1',
+        name: 'English Book Unit 1',
+        icon: '📖',
+        isCustom: true,
+        badge: isGerman ? '1. Schultest' : '1st Test',
+        count: 8,
+      });
+    }
+
+    return Array.from(foundTopics.values()).filter((item) => Boolean(item && item.id && item.name));
+  }, [currentSubject, safeProfile.id, config, isGerman]);
+
+  const baseTopicList =
     currentSubject === 'math'
       ? (isPrimary ? mathPrimaryTopics : mathHighSchoolTopics)
       : currentSubject === 'nature'
@@ -148,6 +283,51 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
       : currentSubject === 'art'
       ? artTopics
       : languageTopics;
+
+  // Insert custom focus topics right after the 'all' topic!
+  const currentTopicList = useMemo(() => {
+    const safeBase = (baseTopicList || []).filter((t) => Boolean(t && t.id && t.name));
+    const safeCustom = (customFocusTopics || []).filter((t) => Boolean(t && t.id && t.name));
+    const allTopic = safeBase.find((t) => t.id === 'all') || { id: 'all', name: t.topics.all, icon: '🌟' };
+    const otherTopics = safeBase.filter((t) => t.id !== 'all');
+    return [allTopic, ...safeCustom, ...otherTopics].filter((item) => Boolean(item && item.id && item.name));
+  }, [baseTopicList, customFocusTopics, t.topics.all]);
+
+  // Check if an official test is available for the currently selected topic or active subject
+  const matchingTestForSelectedTopic = useMemo(() => {
+    const tests = (config?.tests || []).filter((t) => Boolean(t && t.id));
+    // 1. If a specific topic is selected, find exact or title match
+    if (selectedTopic !== 'all') {
+      const match = tests.find(
+        (t) =>
+          t &&
+          t.subject === currentSubject &&
+          (t.topic?.toLowerCase() === selectedTopic.toLowerCase() ||
+            (t.title && t.title.toLowerCase().includes(selectedTopic.toLowerCase()))) &&
+          (t.assignedKidIds?.includes('all') || t.assignedKidIds?.includes(safeProfile.id))
+      );
+      if (match) return match;
+    }
+    // 2. In Language Academy (or if focus topic has a test), find the primary official test
+    if (currentSubject === 'languages') {
+      return (
+        tests.find(
+          (t) =>
+            t &&
+            t.subject === 'languages' &&
+            (t.topic === 'English Book Unit 1' || (t.title && (t.title.toLowerCase().includes('english') || t.title.toLowerCase().includes('unit 1')))) &&
+            (t.assignedKidIds?.includes('all') || t.assignedKidIds?.includes(safeProfile.id))
+        ) ||
+        tests.find(
+          (t) =>
+            t &&
+            t.subject === 'languages' &&
+            (t.assignedKidIds?.includes('all') || t.assignedKidIds?.includes(safeProfile.id))
+        ) || null
+      );
+    }
+    return null;
+  }, [selectedTopic, currentSubject, config?.tests, safeProfile.id]);
 
   const subjectMeta = {
     math: {
@@ -212,20 +392,38 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
   return (
     <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-200">
       {/* Top Segmented Navigation Switcher: Schulfächer vs. Denkspiele */}
-      <div className="flex items-center justify-center p-1 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-lg max-w-md mx-auto">
+      <div
+        className="flex items-center justify-center p-1.5 rounded-2xl shadow-lg max-w-md mx-auto border transition-all"
+        style={{
+          backgroundColor: skin.cardBg,
+          borderColor: skin.cardBorder,
+        }}
+      >
         <button
           id="hub-tab-subjects"
           onClick={() => {
             soundFx.playPop();
             setHubMode('subjects');
           }}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+          style={
             hubMode === 'subjects'
-              ? 'bg-indigo-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200'
+              ? {
+                  background: skin.tabActiveGradient,
+                  borderColor: skin.tabActiveBorder,
+                  boxShadow: skin.tabActiveGlow,
+                  color: skin.tabActiveText,
+                }
+              : {
+                  color: skin.tabInactiveText,
+                }
+          }
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all border cursor-pointer ${
+            hubMode === 'subjects'
+              ? 'scale-[1.02]'
+              : 'border-transparent hover:text-white'
           }`}
         >
-          <BookOpen className="w-4 h-4 text-cyan-300" />
+          <BookOpen className="w-4 h-4" />
           <span>{t.hubTabs.subjects}</span>
         </button>
         <button
@@ -234,13 +432,25 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
             soundFx.playPop();
             setHubMode('brain_labs');
           }}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+          style={
             hubMode === 'brain_labs'
-              ? 'bg-indigo-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200'
+              ? {
+                  background: skin.tabActiveGradient,
+                  borderColor: skin.tabActiveBorder,
+                  boxShadow: skin.tabActiveGlow,
+                  color: skin.tabActiveText,
+                }
+              : {
+                  color: skin.tabInactiveText,
+                }
+          }
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all border cursor-pointer ${
+            hubMode === 'brain_labs'
+              ? 'scale-[1.02]'
+              : 'border-transparent hover:text-white'
           }`}
         >
-          <Brain className="w-4 h-4 text-pink-400" />
+          <Brain className="w-4 h-4" />
           <span>{t.hubTabs.brainLabs}</span>
         </button>
       </div>
@@ -249,7 +459,13 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
         /* ==================== SCHULFÄCHER & QUESTS ==================== */
         <div className="space-y-4 sm:space-y-6">
           {/* 5 Subjects Pill Bar */}
-          <div className="bg-slate-900/80 border border-slate-800/90 p-1.5 rounded-2xl shadow-md flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <div
+            className="p-1.5 rounded-2xl shadow-md flex items-center gap-1.5 overflow-x-auto no-scrollbar border transition-all"
+            style={{
+              backgroundColor: skin.cardBg,
+              borderColor: skin.cardBorder,
+            }}
+          >
             {(['math', 'nature', 'geography', 'art', 'languages'] as SubjectArea[]).map((subj) => {
               const isSelected = currentSubject === subj;
               const icon =
@@ -269,10 +485,22 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
                   key={subj}
                   id={`subject-tab-${subj}`}
                   onClick={() => handleSubjectChange(subj)}
-                  className={`flex-1 min-w-[95px] sm:min-w-[120px] flex items-center justify-center gap-1.5 sm:gap-2 py-2 sm:py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                  style={
                     isSelected
-                      ? 'bg-linear-to-r from-indigo-600 to-blue-600 text-white shadow-md scale-102 border border-indigo-400/50'
-                      : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-slate-800/80'
+                      ? {
+                          background: skin.tabActiveGradient,
+                          borderColor: skin.tabActiveBorder,
+                          boxShadow: skin.tabActiveGlow,
+                          color: skin.tabActiveText,
+                        }
+                      : {
+                          backgroundColor: skin.tabInactiveBg,
+                          borderColor: skin.tabInactiveBorder,
+                          color: skin.tabInactiveText,
+                        }
+                  }
+                  className={`flex-1 min-w-[95px] sm:min-w-[120px] flex items-center justify-center gap-1.5 sm:gap-2 py-2 sm:py-2.5 px-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer border ${
+                    isSelected ? 'shadow-md scale-[1.02]' : 'hover:scale-[1.01]'
                   }`}
                 >
                   <span className="text-base sm:text-lg">{icon}</span>
@@ -284,20 +512,31 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
 
           {/* Language Learning Bar (Only shown when Languages subject is active) */}
           {currentSubject === 'languages' && (
-            <div className="p-3.5 sm:p-4 rounded-2xl bg-linear-to-r from-violet-950/70 via-slate-900 to-indigo-950/70 border border-violet-500/40 shadow-md space-y-2.5">
+            <div
+              className="p-3.5 sm:p-4 rounded-2xl border shadow-md space-y-2.5 transition-all"
+              style={{
+                backgroundColor: skin.cardBg,
+                borderColor: skin.cardBorder,
+              }}
+            >
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-violet-400" />
+                  <Globe className="w-4 h-4" style={{ color: skin.highlightAccent }} />
                   <span className="text-xs font-bold text-white">
                     {t.languagesLearning.targetLanguagePrompt}
                   </span>
                 </div>
                 <button
                   onClick={() => speakWord('Hello, welcome to BrainBoss!', getLangLocale(targetLanguage))}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold border border-slate-700 cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer"
+                  style={{
+                    backgroundColor: skin.secondaryButtonBg,
+                    borderColor: skin.secondaryButtonBorder,
+                    color: skin.secondaryButtonText,
+                  }}
                   title="Audio Test"
                 >
-                  <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
+                  <Volume2 className="w-3.5 h-3.5" />
                   <span>{t.languagesLearning.audioPronounce}</span>
                 </button>
               </div>
@@ -314,11 +553,21 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
                       <button
                         key={lang}
                         onClick={() => handleTargetLanguageChange(lang)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                        style={
                           isSelected
-                            ? 'bg-violet-600 border-violet-400 text-white shadow-sm scale-102'
-                            : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
-                        }`}
+                            ? {
+                                background: skin.tabActiveGradient,
+                                borderColor: skin.tabActiveBorder,
+                                boxShadow: skin.tabActiveGlow,
+                                color: skin.tabActiveText,
+                              }
+                            : {
+                                backgroundColor: skin.tabInactiveBg,
+                                borderColor: skin.tabInactiveBorder,
+                                color: skin.tabInactiveText,
+                              }
+                        }
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer"
                       >
                         <span>{flag}</span>
                         <span>{name}</span>
@@ -330,16 +579,30 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
           )}
 
           {/* Clean Quick Start & Focus Hero Card */}
-          <div className={`relative overflow-hidden rounded-3xl bg-linear-to-br ${subjectMeta.bgGradient} border ${subjectMeta.border} p-5 sm:p-7 text-white shadow-xl`}>
+          <div
+            className="relative overflow-hidden rounded-3xl border p-5 sm:p-7 text-white shadow-xl transition-all"
+            style={{
+              background: skin.heroGradient,
+              borderColor: skin.heroBorder,
+              boxShadow: `0 0 35px ${skin.glowRgba}`,
+            }}
+          >
             <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
               <div className="space-y-3 max-w-xl">
                 {/* Active Subject & Grade Badge */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold uppercase ${subjectMeta.tagColor} border`}>
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold uppercase border"
+                    style={{
+                      backgroundColor: skin.badgeBg,
+                      borderColor: skin.badgeText,
+                      color: skin.badgeText,
+                    }}
+                  >
                     <span>{subjectMeta.icon}</span>
                     <span>{subjectMeta.name}</span>
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">
+                  <span className="text-xs text-slate-300/80 font-mono">
                     {profile.schoolGrade ? `${profile.schoolGrade}. Schulstufe` : (isPrimary ? 'Grundstufe (1-4)' : 'Mittelschule (5-8)')}
                   </span>
                 </div>
@@ -352,46 +615,116 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
                 {/* Topic Selector Bar */}
                 <div className="space-y-1.5 pt-1">
                   <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold">
-                    <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+                    <BookOpen className="w-3.5 h-3.5" style={{ color: skin.highlightAccent }} />
                     <span>Fokus-Thema:</span>
-                    <span className="text-cyan-300 font-bold">{selectedTopicName}</span>
+                    <span className="font-bold" style={{ color: skin.highlightAccent }}>
+                      {selectedTopicName}
+                    </span>
+                    {(selectedTopic === 'English Book Unit 1' || currentTopicList.find((t) => t.id === selectedTopic)?.isCustom) && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        📖 Schulbuch-Fokus
+                      </span>
+                    )}
                   </div>
 
                   {/* Horizontal Scrollable Topic Chips */}
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-                    {currentTopicList.map((item) => {
+                    {currentTopicList.map((item: any) => {
                       const isSelected = selectedTopic === item.id;
+                      const isCustomTopic = item.isCustom || item.id === 'English Book Unit 1';
+
                       return (
                         <button
                           key={item.id}
                           id={`topic-chip-${item.id}`}
-                          onClick={() => {
-                            soundFx.playPop();
-                            setSelectedTopic(item.id);
-                          }}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
+                          onClick={() => handleTopicChange(item.id)}
+                          style={
                             isSelected
-                              ? 'bg-indigo-600 border-indigo-400 text-white shadow-sm'
-                              : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border-slate-800 hover:border-slate-700'
+                              ? {
+                                  backgroundColor: isCustomTopic ? 'rgba(245, 158, 11, 0.25)' : skin.chipActiveBg,
+                                  borderColor: isCustomTopic ? '#f59e0b' : skin.chipActiveBorder,
+                                  color: isCustomTopic ? '#fbbf24' : skin.chipActiveText,
+                                  boxShadow: isCustomTopic ? '0 0 15px rgba(245, 158, 11, 0.5)' : `0 0 12px ${skin.glowRgba}`,
+                                }
+                              : {
+                                  backgroundColor: isCustomTopic ? 'rgba(30, 27, 75, 0.6)' : skin.tabInactiveBg,
+                                  borderColor: isCustomTopic ? 'rgba(245, 158, 11, 0.4)' : skin.tabInactiveBorder,
+                                  color: isCustomTopic ? '#fcd34d' : skin.tabInactiveText,
+                                }
+                          }
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
+                            isSelected ? 'scale-[1.03] ring-1 ring-amber-400/40' : 'hover:scale-[1.01]'
                           }`}
                         >
                           <span>{item.icon}</span>
                           <span>{item.name}</span>
+                          {isCustomTopic && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-200 border border-amber-500/40">
+                              {item.badge || 'Buch'}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
+                {/* Official Test Card Banner when Focus Topic has an assigned test */}
+                {matchingTestForSelectedTopic && (
+                  <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-950/70 border border-amber-500/50 shadow-lg space-y-2 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 text-base">
+                          🏆
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs sm:text-sm font-black text-amber-200">
+                              {matchingTestForSelectedTopic.title}
+                            </h4>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-900/60 border border-amber-400/40 text-amber-300">
+                              Offizieller Test
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-300 mt-0.5">
+                            {matchingTestForSelectedTopic.questions.length} Fragen • {matchingTestForSelectedTopic.timeLimitMinutes > 0 ? `${matchingTestForSelectedTopic.timeLimitMinutes} Min.` : 'Kein Zeitlimit'} • Belohnung: +{matchingTestForSelectedTopic.rewardXp || 150} XP
+                          </p>
+                        </div>
+                      </div>
+
+                      {onStartTest && (
+                        <button
+                          type="button"
+                          id="btn-start-focus-topic-test"
+                          onClick={() => {
+                            soundFx.playCorrect();
+                            onStartTest(matchingTestForSelectedTopic);
+                          }}
+                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs sm:text-sm shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                        >
+                          <Award className="w-4 h-4 fill-slate-950" />
+                          <span>🏆 Schultest / Quiz starten</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Primary Launch Action Buttons */}
                 <div className="flex flex-wrap items-center gap-2.5 pt-2">
                   <button
                     id="hero-play-quest-btn"
                     onClick={handleLaunchHeroGame}
-                    className="flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-linear-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-sm sm:text-base shadow-lg hover:scale-103 active:scale-97 transition-all cursor-pointer"
+                    style={{
+                      background: skin.primaryButtonGradient,
+                      color: skin.primaryButtonText,
+                      borderColor: skin.primaryButtonBorder,
+                      boxShadow: skin.primaryButtonGlow,
+                    }}
+                    className="flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl border font-black text-sm sm:text-base shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   >
-                    <Play className="w-4 h-4 fill-white text-white" />
-                    <span>{t.questView.launchQuest}</span>
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>{selectedTopic === 'English Book Unit 1' ? '▶️ Übungs-Quest starten (Unit 1)' : t.questView.launchQuest}</span>
                   </button>
 
                   <button
@@ -400,16 +733,27 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
                       soundFx.playPop();
                       onOpenAiStory();
                     }}
-                    className="flex items-center gap-1.5 px-4 py-2.5 sm:py-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/50 text-cyan-300 font-bold text-xs sm:text-sm shadow-md transition-all hover:scale-103 cursor-pointer"
+                    style={{
+                      backgroundColor: skin.secondaryButtonBg,
+                      borderColor: skin.secondaryButtonBorder,
+                      color: skin.secondaryButtonText,
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 sm:py-3 rounded-xl border font-bold text-xs sm:text-sm shadow-md transition-all hover:scale-105 cursor-pointer"
                   >
-                    <Bot className="w-4 h-4 text-cyan-400" />
+                    <Bot className="w-4 h-4" />
                     <span>{t.questView.aiStoryQuest}</span>
                   </button>
                 </div>
               </div>
 
               {/* Compact Mascot Companion */}
-              <div className="bg-slate-950/60 border border-slate-800/80 backdrop-blur-sm rounded-2xl p-3 sm:p-4 shadow-xl flex flex-col items-center shrink-0 self-center md:self-auto">
+              <div
+                className="border backdrop-blur-sm rounded-2xl p-3 sm:p-4 shadow-xl flex flex-col items-center shrink-0 self-center md:self-auto"
+                style={{
+                  backgroundColor: skin.modeCardBg,
+                  borderColor: skin.modeCardBorder,
+                }}
+              >
                 <MascotBot
                   mood="cheering"
                   speechText={
@@ -425,29 +769,94 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
           {/* Game Modes Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <Target className="w-4 h-4 text-indigo-400" />
+              <h3
+                className="text-xs font-mono font-bold uppercase tracking-widest flex items-center gap-2"
+                style={{ color: skin.highlightAccent }}
+              >
+                <Target className="w-4 h-4" />
                 <span>{t.hubTabs.chooseMode}</span>
               </h3>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              {/* Dedicated Focus Topic Quiz Mode Card */}
+              {matchingTestForSelectedTopic && onStartTest && (
+                <div
+                  id="mode-card-official-quiz"
+                  onClick={() => {
+                    soundFx.playCorrect();
+                    onStartTest(matchingTestForSelectedTopic);
+                  }}
+                  className="group relative rounded-2xl p-4 sm:p-5 border hover:scale-[1.02] transition-all cursor-pointer flex flex-col justify-between shadow-lg bg-linear-to-br from-amber-950/70 via-slate-900 to-amber-950/40 border-amber-500/60 ring-1 ring-amber-400/40"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                        🏆
+                      </div>
+                      <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/25 text-amber-300 border border-amber-500/40 animate-pulse">
+                        {isGerman ? 'Schultest / Quiz' : 'School Quiz'}
+                      </span>
+                    </div>
+                    <h4 className="font-extrabold text-amber-200 text-base group-hover:text-white transition-colors">
+                      {matchingTestForSelectedTopic.title}
+                    </h4>
+                    <p className="text-xs text-slate-300/90 leading-relaxed line-clamp-2">
+                      {isGerman
+                        ? `Offizieller Schultest zum Fokus-Thema „${matchingTestForSelectedTopic.topic || 'Unit 1'}“ (${matchingTestForSelectedTopic.questions?.length || 0} Fragen).`
+                        : `Official test for focus topic "${matchingTestForSelectedTopic.topic || 'Unit 1'}" (${matchingTestForSelectedTopic.questions?.length || 0} questions).`}
+                    </p>
+                  </div>
+
+                  <div className="pt-3 flex items-center justify-between border-t border-amber-500/30 mt-3">
+                    <span className="text-xs font-mono font-bold text-amber-400">
+                      +{matchingTestForSelectedTopic.rewardXp || 150} XP
+                    </span>
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1 shadow cursor-pointer transition-transform group-hover:scale-105"
+                    >
+                      <Award className="w-3.5 h-3.5 fill-slate-950" />
+                      <span>{isGerman ? 'Quiz starten' : 'Start Quiz'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Mode 1: Core Subject Quest */}
               <div
                 id="mode-card-subject-quest"
                 onClick={handleLaunchHeroGame}
-                className="group relative bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-800 hover:border-blue-500/60 shadow-lg hover:shadow-indigo-500/10 transition-all cursor-pointer flex flex-col justify-between"
+                style={{
+                  backgroundColor: skin.modeCardBg,
+                  borderColor: skin.modeCardBorder,
+                }}
+                className="group relative rounded-2xl p-4 sm:p-5 border hover:scale-[1.02] transition-all cursor-pointer flex flex-col justify-between shadow-lg"
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-xl group-hover:scale-110 transition-transform border"
+                      style={{
+                        backgroundColor: skin.accentSubtle,
+                        borderColor: skin.cardBorder,
+                        color: skin.highlightAccent,
+                      }}
+                    >
                       {subjectMeta.icon}
                     </div>
-                    <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    <span
+                      className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full border"
+                      style={{
+                        backgroundColor: skin.badgeBg,
+                        borderColor: skin.badgeText,
+                        color: skin.badgeText,
+                      }}
+                    >
                       {isGerman ? 'Adaptiv' : 'Adaptive'}
                     </span>
                   </div>
-                  <h4 className="font-bold text-white text-base group-hover:text-cyan-300 transition-colors">
+                  <h4 className="font-bold text-white text-base group-hover:text-amber-200 transition-colors">
                     {currentSubject === 'math'
                       ? t.questView.modeMathQuestTitle
                       : currentSubject === 'nature'
@@ -458,7 +867,7 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
                       ? t.questView.modeArtQuestTitle
                       : t.questView.modeLanguageQuestTitle}
                   </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
+                  <p className="text-xs text-slate-300/80 leading-relaxed line-clamp-2">
                     {currentSubject === 'math'
                       ? t.questView.modeMathQuestDesc
                       : currentSubject === 'nature'
@@ -471,131 +880,240 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
                   </p>
                 </div>
 
-                <div className="pt-3 flex items-center justify-between text-xs font-bold text-cyan-400">
+                <div
+                  className="pt-3 flex items-center justify-between text-xs font-bold"
+                  style={{ color: skin.highlightAccent }}
+                >
                   <span>{t.questView.playNow}</span>
-                  <Play className="w-3.5 h-3.5 fill-cyan-400 group-hover:translate-x-1 transition-transform" />
+                  <Play className="w-3.5 h-3.5 fill-current group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
-
               {/* Mode 2: 60s Speed Sprint / Vocab Blitz */}
-              <div
-                id="mode-card-speed-sprint"
-                onClick={() => {
-                  soundFx.playPop();
-                  onStartGame(
-                    currentSubject === 'languages' ? 'vocab_sprint' : 'speed_sprint',
-                    selectedTopic,
-                    currentSubject,
-                    targetLanguage
-                  );
-                }}
-                className="group relative bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-800 hover:border-amber-500/60 shadow-lg hover:shadow-amber-500/10 transition-all cursor-pointer flex flex-col justify-between"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                      ⚡
+              {(() => {
+                const sprintMode = currentSubject === 'languages' ? 'vocab_sprint' : 'speed_sprint';
+                const isSprintDisabled = isModeDisabled(sprintMode);
+                return (
+                  <div
+                    id="mode-card-speed-sprint"
+                    onClick={() => {
+                      if (isSprintDisabled) {
+                        soundFx.playWrong();
+                        return;
+                      }
+                      soundFx.playPop();
+                      onStartGame(sprintMode, selectedTopic, currentSubject, targetLanguage);
+                    }}
+                    style={{
+                      backgroundColor: skin.modeCardBg,
+                      borderColor: skin.modeCardBorder,
+                    }}
+                    className={`group relative rounded-2xl p-4 sm:p-5 border transition-all flex flex-col justify-between shadow-lg ${
+                      isSprintDisabled
+                        ? 'opacity-60 cursor-not-allowed'
+                        : 'hover:scale-[1.02] cursor-pointer'
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center text-xl group-hover:scale-110 transition-transform border"
+                          style={{
+                            backgroundColor: skin.accentSubtle,
+                            borderColor: skin.cardBorder,
+                          }}
+                        >
+                          {isSprintDisabled ? <Lock className="w-5 h-5 text-slate-500" /> : '⚡'}
+                        </div>
+                        <span
+                          className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full border flex items-center gap-1"
+                          style={{
+                            backgroundColor: skin.badgeBg,
+                            borderColor: skin.badgeText,
+                            color: skin.badgeText,
+                          }}
+                        >
+                          {isSprintDisabled ? 'Gesperrt' : <><Clock className="w-2.5 h-2.5" /> 60s</>}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-white text-base group-hover:text-amber-200 transition-colors">
+                        {currentSubject === 'languages'
+                          ? t.questView.modeVocabSprintTitle
+                          : t.questView.modeSpeedSprintTitle}
+                      </h4>
+                      <p className="text-xs text-slate-300/80 leading-relaxed line-clamp-2">
+                        {isSprintDisabled
+                          ? 'In Eltern-Konfiguration für dieses Kind deaktiviert.'
+                          : currentSubject === 'languages'
+                          ? t.questView.modeVocabSprintDesc
+                          : t.questView.modeSpeedSprintDesc}
+                      </p>
                     </div>
-                    <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                      <Clock className="w-2.5 h-2.5" /> 60s
-                    </span>
-                  </div>
-                  <h4 className="font-bold text-white text-base group-hover:text-amber-300 transition-colors">
-                    {currentSubject === 'languages'
-                      ? t.questView.modeVocabSprintTitle
-                      : t.questView.modeSpeedSprintTitle}
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
-                    {currentSubject === 'languages'
-                      ? t.questView.modeVocabSprintDesc
-                      : t.questView.modeSpeedSprintDesc}
-                  </p>
-                </div>
 
-                <div className="pt-3 flex items-center justify-between text-xs font-bold text-amber-400">
-                  <span>High: {profile.highScores.speed_sprint || 0} pts</span>
-                  <Play className="w-3.5 h-3.5 fill-amber-400 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
+                    <div
+                      className="pt-3 flex items-center justify-between text-xs font-bold"
+                      style={{ color: skin.highlightAccent }}
+                    >
+                      <span>{isSprintDisabled ? 'Deaktiviert' : `High: ${profile.highScores.speed_sprint || 0} pts`}</span>
+                      {!isSprintDisabled && <Play className="w-3.5 h-3.5 fill-current group-hover:translate-x-1 transition-transform" />}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Mode 3: Survival 3-Hearts */}
-              <div
-                id="mode-card-survival"
-                onClick={() => {
-                  soundFx.playPop();
-                  onStartGame('survival_hearts', selectedTopic, currentSubject, targetLanguage);
-                }}
-                className="group relative bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-800 hover:border-rose-500/60 shadow-lg hover:shadow-rose-500/10 transition-all cursor-pointer flex flex-col justify-between"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                      ❤️
+              {(() => {
+                const isSurvivalDisabled = isModeDisabled('survival_hearts');
+                return (
+                  <div
+                    id="mode-card-survival"
+                    onClick={() => {
+                      if (isSurvivalDisabled) {
+                        soundFx.playWrong();
+                        return;
+                      }
+                      soundFx.playPop();
+                      onStartGame('survival_hearts', selectedTopic, currentSubject, targetLanguage);
+                    }}
+                    style={{
+                      backgroundColor: skin.modeCardBg,
+                      borderColor: skin.modeCardBorder,
+                    }}
+                    className={`group relative rounded-2xl p-4 sm:p-5 border transition-all flex flex-col justify-between shadow-lg ${
+                      isSurvivalDisabled
+                        ? 'opacity-60 cursor-not-allowed'
+                        : 'hover:scale-[1.02] cursor-pointer'
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center text-xl group-hover:scale-110 transition-transform border"
+                          style={{
+                            backgroundColor: skin.accentSubtle,
+                            borderColor: skin.cardBorder,
+                          }}
+                        >
+                          {isSurvivalDisabled ? <Lock className="w-5 h-5 text-slate-500" /> : '❤️'}
+                        </div>
+                        <span
+                          className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full border"
+                          style={{
+                            backgroundColor: skin.badgeBg,
+                            borderColor: skin.badgeText,
+                            color: skin.badgeText,
+                          }}
+                        >
+                          {isSurvivalDisabled ? 'Gesperrt' : '3 ❤️'}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-white text-base group-hover:text-rose-300 transition-colors">
+                        {t.questView.modeSurvivalHeartsTitle}
+                      </h4>
+                      <p className="text-xs text-slate-300/80 leading-relaxed line-clamp-2">
+                        {isSurvivalDisabled
+                          ? 'In Eltern-Konfiguration für dieses Kind deaktiviert.'
+                          : t.questView.modeSurvivalHeartsDesc}
+                      </p>
                     </div>
-                    <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                      3 ❤️
-                    </span>
-                  </div>
-                  <h4 className="font-bold text-white text-base group-hover:text-rose-300 transition-colors">
-                    {t.questView.modeSurvivalHeartsTitle}
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
-                    {t.questView.modeSurvivalHeartsDesc}
-                  </p>
-                </div>
 
-                <div className="pt-3 flex items-center justify-between text-xs font-bold text-rose-400">
-                  <span>{t.questView.startChallenge}</span>
-                  <Play className="w-3.5 h-3.5 fill-rose-400 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
+                    <div
+                      className="pt-3 flex items-center justify-between text-xs font-bold"
+                      style={{ color: skin.highlightAccent }}
+                    >
+                      <span>{isSurvivalDisabled ? 'Deaktiviert' : t.questView.startChallenge}</span>
+                      {!isSurvivalDisabled && <Play className="w-3.5 h-3.5 fill-current group-hover:translate-x-1 transition-transform" />}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Mode 4: Boss Battle */}
-              <div
-                id="mode-card-boss-battle"
-                onClick={() => {
-                  soundFx.playPop();
-                  onStartGame('boss_battle', selectedTopic, currentSubject, targetLanguage);
-                }}
-                className="group relative bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-800 hover:border-purple-500/60 shadow-lg hover:shadow-purple-500/10 transition-all cursor-pointer flex flex-col justify-between"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                      👑
+              {(() => {
+                const isBossDisabled = isModeDisabled('boss_battle');
+                return (
+                  <div
+                    id="mode-card-boss-battle"
+                    onClick={() => {
+                      if (isBossDisabled) {
+                        soundFx.playWrong();
+                        return;
+                      }
+                      soundFx.playPop();
+                      onStartGame('boss_battle', selectedTopic, currentSubject, targetLanguage);
+                    }}
+                    style={{
+                      backgroundColor: skin.modeCardBg,
+                      borderColor: skin.modeCardBorder,
+                    }}
+                    className={`group relative rounded-2xl p-4 sm:p-5 border transition-all flex flex-col justify-between shadow-lg ${
+                      isBossDisabled
+                        ? 'opacity-60 cursor-not-allowed'
+                        : 'hover:scale-[1.02] cursor-pointer'
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center text-xl group-hover:scale-110 transition-transform border"
+                          style={{
+                            backgroundColor: skin.accentSubtle,
+                            borderColor: skin.cardBorder,
+                          }}
+                        >
+                          {isBossDisabled ? <Lock className="w-5 h-5 text-slate-500" /> : '👑'}
+                        </div>
+                        <span
+                          className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full border flex items-center gap-1"
+                          style={{
+                            backgroundColor: skin.badgeBg,
+                            borderColor: skin.badgeText,
+                            color: skin.badgeText,
+                          }}
+                        >
+                          {isBossDisabled ? 'Gesperrt' : <><Flame className="w-2.5 h-2.5 text-purple-400" /> 5 {isGerman ? 'Phasen' : 'Phases'}</>}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-white text-base group-hover:text-purple-300 transition-colors">
+                        {t.questView.modeBossBattleTitle}
+                      </h4>
+                      <p className="text-xs text-slate-300/80 leading-relaxed line-clamp-2">
+                        {isBossDisabled
+                          ? 'In Eltern-Konfiguration für dieses Kind deaktiviert.'
+                          : t.questView.modeBossBattleDesc}
+                      </p>
                     </div>
-                    <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center gap-1">
-                      <Flame className="w-2.5 h-2.5 text-purple-400" /> 5 {isGerman ? 'Phasen' : 'Phases'}
-                    </span>
-                  </div>
-                  <h4 className="font-bold text-white text-base group-hover:text-purple-300 transition-colors">
-                    {t.questView.modeBossBattleTitle}
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
-                    {t.questView.modeBossBattleDesc}
-                  </p>
-                </div>
 
-                <div className="pt-3 flex items-center justify-between text-xs font-bold text-purple-400">
-                  <span>{t.questView.duelBoss}</span>
-                  <Play className="w-3.5 h-3.5 fill-purple-400 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
+                    <div
+                      className="pt-3 flex items-center justify-between text-xs font-bold"
+                      style={{ color: skin.highlightAccent }}
+                    >
+                      <span>{isBossDisabled ? 'Deaktiviert' : t.questView.duelBoss}</span>
+                      {!isBossDisabled && <Play className="w-3.5 h-3.5 fill-current group-hover:translate-x-1 transition-transform" />}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
       ) : (
         /* ==================== DENK- & REFLEXSPIELE (BRAIN LABS) ==================== */
         <div className="space-y-4 sm:space-y-6">
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
+          <div
+            className="rounded-3xl p-5 sm:p-7 shadow-xl space-y-4 border transition-all"
+            style={{
+              backgroundColor: skin.cardBg,
+              borderColor: skin.cardBorder,
+            }}
+          >
             <div>
               <div className="flex items-center gap-2">
-                <Brain className="w-5 h-5 text-cyan-400" />
+                <Brain className="w-5 h-5" style={{ color: skin.highlightAccent }} />
                 <h3 className="text-lg sm:text-xl font-bold text-white">
                   {t.questView.brainReflexLabs}
                 </h3>
               </div>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-300/80 mt-1">
                 {isGerman
                   ? 'Trainiere Kognition, Fokus, Reaktionszeit und das visuelle Arbeitsgedächtnis'
                   : 'Cognitive reflex, focus, speed, and working memory training modules'}
@@ -604,82 +1122,217 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
               {/* Classic Color & Number Rush */}
-              <div
-                id="brain-game-classic"
-                onClick={() => {
-                  soundFx.playPop();
-                  onStartGame('classic_color_number');
-                }}
-                className="group bg-slate-950/70 hover:bg-slate-800/70 border border-slate-800 hover:border-pink-500/60 rounded-2xl p-5 transition-all cursor-pointer flex flex-col justify-between shadow-md"
-              >
-                <div className="space-y-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-pink-500/10 border border-pink-500/30 text-pink-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                    🎯
+              {(() => {
+                const isClassicDisabled = isModeDisabled('classic_color_number');
+                return (
+                  <div
+                    id="brain-game-classic"
+                    onClick={() => {
+                      if (isClassicDisabled) {
+                        soundFx.playWrong();
+                        return;
+                      }
+                      soundFx.playPop();
+                      onStartGame('classic_color_number');
+                    }}
+                    style={{
+                      backgroundColor: skin.modeCardBg,
+                      borderColor: skin.modeCardBorder,
+                    }}
+                    className={`group border rounded-2xl p-5 transition-all flex flex-col justify-between shadow-md ${
+                      isClassicDisabled
+                        ? 'opacity-60 cursor-not-allowed'
+                        : 'hover:scale-[1.02] cursor-pointer'
+                    }`}
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center text-xl group-hover:scale-110 transition-transform border"
+                          style={{
+                            backgroundColor: skin.accentSubtle,
+                            borderColor: skin.cardBorder,
+                          }}
+                        >
+                          {isClassicDisabled ? <Lock className="w-5 h-5 text-slate-500" /> : '🎯'}
+                        </div>
+                        {isClassicDisabled && (
+                          <span
+                            className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full border"
+                            style={{
+                              backgroundColor: skin.badgeBg,
+                              borderColor: skin.badgeText,
+                              color: skin.badgeText,
+                            }}
+                          >
+                            Gesperrt
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-white text-base group-hover:text-amber-200 transition-colors">
+                        {t.questView.modeClassicReflexTitle}
+                      </h4>
+                      <p className="text-xs text-slate-300/80 leading-relaxed">
+                        {isClassicDisabled
+                          ? 'In Eltern-Konfiguration für dieses Kind deaktiviert.'
+                          : t.questView.modeClassicReflexDesc}
+                      </p>
+                    </div>
+                    <div
+                      className="pt-4 flex items-center justify-between text-xs font-mono font-bold border-t mt-3"
+                      style={{
+                        borderColor: skin.cardBorder,
+                        color: skin.highlightAccent,
+                      }}
+                    >
+                      <span>{isClassicDisabled ? 'Deaktiviert' : `High: ${profile.highScores.classic_color_number || 0} pts`}</span>
+                      <span>{isClassicDisabled ? '' : `${t.questView.playNow} →`}</span>
+                    </div>
                   </div>
-                  <h4 className="font-bold text-white text-base group-hover:text-pink-400 transition-colors">
-                    {t.questView.modeClassicReflexTitle}
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    {t.questView.modeClassicReflexDesc}
-                  </p>
-                </div>
-                <div className="pt-4 flex items-center justify-between text-xs text-pink-400 font-mono font-bold border-t border-slate-800/80 mt-3">
-                  <span>High: {profile.highScores.classic_color_number || 0} pts</span>
-                  <span>{t.questView.playNow} &rarr;</span>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Memory Matrix */}
-              <div
-                id="brain-game-memory"
-                onClick={() => {
-                  soundFx.playPop();
-                  onStartGame('memory_matrix');
-                }}
-                className="group bg-slate-950/70 hover:bg-slate-800/70 border border-slate-800 hover:border-cyan-500/60 rounded-2xl p-5 transition-all cursor-pointer flex flex-col justify-between shadow-md"
-              >
-                <div className="space-y-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                    🧩
+              {(() => {
+                const isMemoryDisabled = isModeDisabled('memory_matrix');
+                return (
+                  <div
+                    id="brain-game-memory"
+                    onClick={() => {
+                      if (isMemoryDisabled) {
+                        soundFx.playWrong();
+                        return;
+                      }
+                      soundFx.playPop();
+                      onStartGame('memory_matrix');
+                    }}
+                    style={{
+                      backgroundColor: skin.modeCardBg,
+                      borderColor: skin.modeCardBorder,
+                    }}
+                    className={`group border rounded-2xl p-5 transition-all flex flex-col justify-between shadow-md ${
+                      isMemoryDisabled
+                        ? 'opacity-60 cursor-not-allowed'
+                        : 'hover:scale-[1.02] cursor-pointer'
+                    }`}
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center text-xl group-hover:scale-110 transition-transform border"
+                          style={{
+                            backgroundColor: skin.accentSubtle,
+                            borderColor: skin.cardBorder,
+                          }}
+                        >
+                          {isMemoryDisabled ? <Lock className="w-5 h-5 text-slate-500" /> : '🧩'}
+                        </div>
+                        {isMemoryDisabled && (
+                          <span
+                            className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full border"
+                            style={{
+                              backgroundColor: skin.badgeBg,
+                              borderColor: skin.badgeText,
+                              color: skin.badgeText,
+                            }}
+                          >
+                            Gesperrt
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-white text-base group-hover:text-amber-200 transition-colors">
+                        {t.questView.modeMemoryMatrixTitle}
+                      </h4>
+                      <p className="text-xs text-slate-300/80 leading-relaxed">
+                        {isMemoryDisabled
+                          ? 'In Eltern-Konfiguration für dieses Kind deaktiviert.'
+                          : t.questView.modeMemoryMatrixDesc}
+                      </p>
+                    </div>
+                    <div
+                      className="pt-4 flex items-center justify-between text-xs font-mono font-bold border-t mt-3"
+                      style={{
+                        borderColor: skin.cardBorder,
+                        color: skin.highlightAccent,
+                      }}
+                    >
+                      <span>{isMemoryDisabled ? 'Deaktiviert' : `Level ${profile.highScores.memory_matrix || 1}`}</span>
+                      <span>{isMemoryDisabled ? '' : `${t.questView.testMemory} →`}</span>
+                    </div>
                   </div>
-                  <h4 className="font-bold text-white text-base group-hover:text-cyan-400 transition-colors">
-                    {t.questView.modeMemoryMatrixTitle}
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    {t.questView.modeMemoryMatrixDesc}
-                  </p>
-                </div>
-                <div className="pt-4 flex items-center justify-between text-xs text-cyan-400 font-mono font-bold border-t border-slate-800/80 mt-3">
-                  <span>Level {profile.highScores.memory_matrix || 1}</span>
-                  <span>{t.questView.testMemory} &rarr;</span>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Speed Stroop Reflex */}
-              <div
-                id="brain-game-stroop"
-                onClick={() => {
-                  soundFx.playPop();
-                  onStartGame('speed_stroop');
-                }}
-                className="group bg-slate-950/70 hover:bg-slate-800/70 border border-slate-800 hover:border-emerald-500/60 rounded-2xl p-5 transition-all cursor-pointer flex flex-col justify-between shadow-md"
-              >
-                <div className="space-y-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                    ⚡
+              {(() => {
+                const isStroopDisabled = isModeDisabled('speed_stroop');
+                return (
+                  <div
+                    id="brain-game-stroop"
+                    onClick={() => {
+                      if (isStroopDisabled) {
+                        soundFx.playWrong();
+                        return;
+                      }
+                      soundFx.playPop();
+                      onStartGame('speed_stroop');
+                    }}
+                    style={{
+                      backgroundColor: skin.modeCardBg,
+                      borderColor: skin.modeCardBorder,
+                    }}
+                    className={`group border rounded-2xl p-5 transition-all flex flex-col justify-between shadow-md ${
+                      isStroopDisabled
+                        ? 'opacity-60 cursor-not-allowed'
+                        : 'hover:scale-[1.02] cursor-pointer'
+                    }`}
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center text-xl group-hover:scale-110 transition-transform border"
+                          style={{
+                            backgroundColor: skin.accentSubtle,
+                            borderColor: skin.cardBorder,
+                          }}
+                        >
+                          {isStroopDisabled ? <Lock className="w-5 h-5 text-slate-500" /> : '⚡'}
+                        </div>
+                        {isStroopDisabled && (
+                          <span
+                            className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full border"
+                            style={{
+                              backgroundColor: skin.badgeBg,
+                              borderColor: skin.badgeText,
+                              color: skin.badgeText,
+                            }}
+                          >
+                            Gesperrt
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-white text-base group-hover:text-amber-200 transition-colors">
+                        {t.questView.modeSpeedStroopTitle}
+                      </h4>
+                      <p className="text-xs text-slate-300/80 leading-relaxed">
+                        {isStroopDisabled
+                          ? 'In Eltern-Konfiguration für dieses Kind deaktiviert.'
+                          : t.questView.modeSpeedStroopDesc}
+                      </p>
+                    </div>
+                    <div
+                      className="pt-4 flex items-center justify-between text-xs font-mono font-bold border-t mt-3"
+                      style={{
+                        borderColor: skin.cardBorder,
+                        color: skin.highlightAccent,
+                      }}
+                    >
+                      <span>{isStroopDisabled ? 'Deaktiviert' : `High: ${profile.highScores.speed_stroop || 0} pts`}</span>
+                      <span>{isStroopDisabled ? '' : `${t.questView.playNow} →`}</span>
+                    </div>
                   </div>
-                  <h4 className="font-bold text-white text-base group-hover:text-emerald-400 transition-colors">
-                    {t.questView.modeSpeedStroopTitle}
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    {t.questView.modeSpeedStroopDesc}
-                  </p>
-                </div>
-                <div className="pt-4 flex items-center justify-between text-xs text-emerald-400 font-mono font-bold border-t border-slate-800/80 mt-3">
-                  <span>High: {profile.highScores.speed_stroop || 0} pts</span>
-                  <span>{t.questView.enterLab} &rarr;</span>
-                </div>
-              </div>
+                );
+              })()}
             </div>
           </div>
         </div>
