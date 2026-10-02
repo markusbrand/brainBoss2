@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ChildTest, KidProfile, ProblemItem, TestSubmission } from '../../types';
-import { recordTestSubmission, addXPAndCoins } from '../../utils/storage';
+import { recordTestSubmission, addXPAndCoins, DEFAULT_PARENT_CONFIG } from '../../utils/storage';
 import { soundFx } from '../../utils/audio';
 import { speakWord } from '../../utils/subjectEngines';
 
@@ -22,8 +22,10 @@ interface ChildTestModalProps {
   isOpen: boolean;
   onClose: () => void;
   test: ChildTest;
-  profile: KidProfile;
-  onTestCompleted: (submission: TestSubmission, updatedProfile: KidProfile) => void;
+  profile?: KidProfile;
+  kid?: KidProfile;
+  onTestCompleted?: (submission: TestSubmission, updatedProfile: KidProfile) => void;
+  onCompleteTest?: (score: number, total: number) => void;
 }
 
 export const ChildTestModal: React.FC<ChildTestModalProps> = ({
@@ -31,8 +33,12 @@ export const ChildTestModal: React.FC<ChildTestModalProps> = ({
   onClose,
   test,
   profile,
+  kid,
   onTestCompleted,
+  onCompleteTest,
 }) => {
+  const currentKid = profile || kid || DEFAULT_PARENT_CONFIG.kids[0];
+
   const [currentIdx, setCurrentIdx] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<string, string | number>>({});
   const [timeLeftSeconds, setTimeLeftSeconds] = useState<number>(
@@ -107,8 +113,8 @@ export const ChildTestModal: React.FC<ChildTestModalProps> = ({
       id: `sub_${Date.now()}`,
       testId: test.id,
       testTitle: test.title,
-      kidId: profile.id,
-      kidName: profile.name,
+      kidId: currentKid.id,
+      kidName: currentKid.name,
       subject: test.subject,
       score,
       totalQuestions: questions.length,
@@ -123,8 +129,13 @@ export const ChildTestModal: React.FC<ChildTestModalProps> = ({
     recordTestSubmission(submission);
 
     // Award XP and Coins to kid
-    const result = addXPAndCoins(profile, earnedXp, earnedCoins);
-    onTestCompleted(submission, result.profile as KidProfile);
+    const result = addXPAndCoins(currentKid, earnedXp, earnedCoins);
+    if (typeof onTestCompleted === 'function') {
+      onTestCompleted(submission, result.profile as KidProfile);
+    }
+    if (typeof onCompleteTest === 'function') {
+      onCompleteTest(correctCount, questions.length);
+    }
 
     if (accuracy >= 70) {
       soundFx.playCorrect();
@@ -283,7 +294,7 @@ export const ChildTestModal: React.FC<ChildTestModalProps> = ({
 
             <div>
               <h3 className="text-2xl font-extrabold text-white">Test abgeschlossen!</h3>
-              <p className="text-sm text-slate-400 mt-1">Super Leistung, {profile.name}!</p>
+              <p className="text-sm text-slate-400 mt-1">Super Leistung, {currentKid.name}!</p>
             </div>
 
             <div className="grid grid-cols-3 gap-3 max-w-md mx-auto">

@@ -10,8 +10,18 @@ dotenv.config();
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use(express.json({ limit: "200mb" }));
+app.use(express.urlencoded({ limit: "200mb", extended: true }));
+
+// Helper: Shuffle array
+const shuffleArray = <T>(array: T[]): T[] => {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
 
 // Server-side Gemini client
 const getGeminiClient = () => {
@@ -26,6 +36,11 @@ const getGeminiClient = () => {
     },
   });
 };
+
+// Favicon fallback
+app.get("/favicon.ico", (_req, res) => {
+  res.sendFile(path.join(process.cwd(), "public", "favicon.svg"));
+});
 
 // API: Health check
 app.get("/api/health", (_req, res) => {
@@ -57,8 +72,12 @@ app.get("/api/auth/me", (req, res) => {
 
 // API: PostgreSQL DB status
 app.get("/api/db/status", async (_req, res) => {
-  const status = await checkDbStatus();
-  res.json(status);
+  try {
+    const status = await checkDbStatus();
+    res.json(status);
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // API: Pull data from PostgreSQL DB
@@ -226,6 +245,12 @@ All text in story, questTitle, storyIntro, and hints MUST be in ${targetLangName
 
     const text = response.text || "";
     const parsed = JSON.parse(text);
+    if (Array.isArray(parsed.steps)) {
+      parsed.steps = parsed.steps.map((step: any) => ({
+        ...step,
+        options: Array.isArray(step.options) ? shuffleArray(step.options) : step.options,
+      }));
+    }
     res.json(parsed);
   } catch (error: any) {
     console.error("Gemini quest generation error:", error);
@@ -368,9 +393,9 @@ app.post("/api/gemini/generate-questions", async (req, res) => {
           ? `[KI-Aufgabe #${idx + 1}] Welche Antwort ist für ${subject} (Schwierigkeit ${difficulty}/5) korrekt?`
           : `[AI Task #${idx + 1}] Which answer is correct for ${subject} (Difficulty ${difficulty}/5)?`,
         subtext: isGerman ? "Wähle die richtige Option" : "Select the correct option",
-        options: isGerman
+        options: shuffleArray(isGerman
           ? [`Richtige Antwort #${idx + 1}`, `Option B`, `Option C`, `Option D`]
-          : [`Correct Answer #${idx + 1}`, `Option B`, `Option C`, `Option D`],
+          : [`Correct Answer #${idx + 1}`, `Option B`, `Option C`, `Option D`]),
         correctAnswer: isGerman ? `Richtige Antwort #${idx + 1}` : `Correct Answer #${idx + 1}`,
         explanation: isGerman
           ? "Dies ist die mathematisch und logisch fundierte Begründung."
@@ -433,6 +458,7 @@ Ensure all 4 options are distinct, interesting, plausible, and the correctAnswer
       id: q.id || `ai-gen-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
       subject: q.subject || subject,
       gradeLevel: q.gradeLevel || gradeLevel,
+      options: Array.isArray(q.options) ? shuffleArray(q.options) : q.options,
       difficulty: Number(q.difficulty) || Number(difficulty),
       xp: q.xp || 25 + Number(difficulty) * 5,
       coins: q.coins || 10 + Number(difficulty) * 3,
@@ -450,7 +476,8 @@ async function callOpenRouterCompletion(
   apiKey: string,
   model: string,
   promptText: string,
-  rawImages: string[]
+  rawImages: string[],
+  requireJson: boolean = true
 ): Promise<any> {
   const contentParts: any[] = [
     { type: "text", text: promptText },
@@ -476,7 +503,7 @@ async function callOpenRouterCompletion(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: model || "google/gemini-2.0-flash-001",
+      model: model || "openai/gpt-4o-mini",
       messages: [
         {
           role: "user",
@@ -484,7 +511,8 @@ async function callOpenRouterCompletion(
         },
       ],
       temperature: 0.2,
-      response_format: { type: "json_object" },
+      max_tokens: 12000,
+      ...(requireJson ? { response_format: { type: "json_object" } } : {})
     }),
   });
 
@@ -510,6 +538,9 @@ async function callOpenRouterCompletion(
   } else if (cleanJson.startsWith("```")) {
     cleanJson = cleanJson.replace(/^```\s*/, "").replace(/\s*```$/, "");
   }
+  if (!requireJson) {
+    return rawText;
+  }
 
   try {
     return JSON.parse(cleanJson);
@@ -525,7 +556,7 @@ async function callOpenRouterCompletion(
 // API: Test OpenRouter connection and model
 app.post("/api/openrouter/test-connection", async (req, res) => {
   try {
-    const { apiKey, model = "google/gemini-2.0-flash-001" } = req.body;
+    const { apiKey, model = "openai/gpt-4o-mini" } = req.body;
     const effectiveKey = apiKey || process.env.OPENROUTER_API_KEY;
 
     if (!effectiveKey) {
@@ -544,7 +575,7 @@ app.post("/api/openrouter/test-connection", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: model || "google/gemini-2.0-flash-001",
+        model: model || "openai/gpt-4o-mini",
         messages: [
           {
             role: "user",
@@ -596,12 +627,19 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
       openRouterModel = "google/gemini-2.0-flash-001",
     } = req.body;
 
+    console.log("==> /scan-schoolbook requested!");
+    console.log(`Images length: ${images.length}, provider: ${provider}`);
+    console.log(`Body openRouterApiKey provided? ${!!openRouterApiKey}`);
+    console.log(`Env OPENROUTER_API_KEY provided? ${!!process.env.OPENROUTER_API_KEY}`);
+
     const rawImages: string[] = [];
     if (Array.isArray(images) && images.length > 0) {
       rawImages.push(...images.filter(Boolean));
     } else if (image && typeof image === "string") {
       rawImages.push(image);
     }
+    
+    console.log(`rawImages length after filter: ${rawImages.length}`);
 
     const isGerman = language === "de";
     const targetLangName = isGerman ? "German (Deutsch)" : "English";
@@ -646,14 +684,19 @@ Your Task:
    - Include kid-friendly explanations in German ('explanation') that clearly explain the rule or meaning so the child learns from mistakes!
 3. For Math, Nature, Geography, Art:
    - Faithfully digitize the page problems into interactive multiple-choice questions with educational explanations and hints.
-4. Generate 5 to 10 structured, interactive multiple-choice questions directly derived from the book page(s).
+4. Generate an EXHAUSTIVE set of structured, interactive multiple-choice questions directly derived from the book page(s). 
+CRITICAL RULES FOR EXHAUSTION:
+- You MUST extract EVERY SINGLE vocabulary word, grammar rule, text comprehension detail, and exercise item found in all photos.
+- DO NOT summarize. DO NOT stop early. If there are 11 pages, generate 50-150 questions to cover ALL material completely.
+- Laziness is strictly forbidden. 
 5. Output strictly valid JSON matching this schema:
 {
   "batchTitle": "Concise informative title in ${targetLangName} (e.g., 'English Unit 1-2: School & First Test Prep' or 'Mathebuch S. 42: Bruchrechnen')",
   "detectedSubject": "${effectiveSubject || 'languages'}",
-  "detectedTopic": "topic_identifier (e.g., 'basic_vocab', 'common_phrases', 'grammar_articles', 'grammar_verbs_tenses', 'numbers_colors', 'addition_subtraction')",
+  "detectedTopic": "topic_identifier",
   "schoolGrade": ${targetSchoolGrade || 3},
   "gradeLevel": "${detectedGradeLevel}",
+  "totalItemsFoundInImages": "integer representing the true count of all learnable items in the images",
   "extractedSummary": "1-2 sentences in ${targetLangName} summarizing the extracted workbook topics and exercises",
   "questions": [
     {
@@ -683,22 +726,39 @@ Make sure every question has 4 distinct options and the correctAnswer is exactly
 
     let parsedResult: any = null;
     let usedProvider = "gemini";
-    let usedModel = "gemini-3.8-flash";
+    let usedModel = "gemini-2.5-flash";
 
-    // 1. Try OpenRouter if requested or configured
+    // 1. Try OpenRouter if requested or configured (Pipeline Approach)
     if ((provider === "openrouter" || effectiveOpenRouterKey) && rawImages.length > 0) {
       if (effectiveOpenRouterKey) {
         try {
           usedProvider = "openrouter";
-          usedModel = openRouterModel || "google/gemini-2.0-flash-001";
+          usedModel = "Pipeline: gemini-2.5-flash -> gpt-4o-mini";
+          
+          console.log("Starting Pipeline Step 1: Vision Extraction");
+          // Step 1: Extract all text from images using the best vision model
+          const visionPrompt = "Carefully transcribe all text, vocabulary lists, dialogues, and exercises from these images exactly as they appear. Do not summarize or format as questions yet. Just give me the raw text of everything on these pages.";
+          const rawTranscribedText = await callOpenRouterCompletion(
+            effectiveOpenRouterKey,
+            "google/gemini-2.5-flash", // Best for OCR
+            visionPrompt,
+            rawImages,
+            false // no JSON required
+          );
+
+          console.log("Starting Pipeline Step 2: JSON Generation");
+          // Step 2: Generate JSON using the best instruction-following model
+          const generationPrompt = promptText + "\n\nHere is the exact transcribed text from the images. Use this text as your sole source of truth for the extraction:\n\n" + rawTranscribedText;
+          
           parsedResult = await callOpenRouterCompletion(
             effectiveOpenRouterKey,
-            usedModel,
-            promptText,
-            rawImages
+            "openai/gpt-4o-mini", // Best for JSON
+            generationPrompt,
+            [], // No images needed here, saving cost and context
+            true
           );
         } catch (openRouterErr: any) {
-          console.warn("OpenRouter call failed, attempting Gemini fallback:", openRouterErr.message);
+          console.warn("OpenRouter pipeline failed, attempting Gemini fallback:", openRouterErr.message);
         }
       }
     }
@@ -709,7 +769,7 @@ Make sure every question has 4 distinct options and the correctAnswer is exactly
       if (ai) {
         try {
           usedProvider = "gemini";
-          usedModel = "gemini-3.8-flash";
+          usedModel = "gemini-2.5-flash";
 
           const imageParts = rawImages.map((img) => {
             let mimeType = "image/jpeg";
@@ -730,7 +790,7 @@ Make sure every question has 4 distinct options and the correctAnswer is exactly
           });
 
           const response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
+            model: "gemini-2.5-flash",
             contents: [
               {
                 role: "user",
@@ -740,6 +800,7 @@ Make sure every question has 4 distinct options and the correctAnswer is exactly
             config: {
               responseMimeType: "application/json",
               temperature: 0.2,
+              maxOutputTokens: 8192,
             },
           });
 
@@ -1009,7 +1070,7 @@ Make sure every question has 4 distinct options and the correctAnswer is exactly
         extractedSummary: isGerman
           ? `Erfolgreich ${fallbackQuestions.length} gezielte Übungsaufgaben für den 1. Test vorbereitet (Vokabeln, Grammatik, Aussprache & Erklärungen).`
           : `Successfully generated ${fallbackQuestions.length} practice exercises for 1st test prep.`,
-        questions: fallbackQuestions,
+        questions: fallbackQuestions.map(q => ({ ...q, options: Array.isArray(q.options) ? shuffleArray(q.options) : q.options })),
       });
     }
 
@@ -1027,6 +1088,7 @@ Make sure every question has 4 distinct options and the correctAnswer is exactly
       gradeLevel: q.gradeLevel || detectedGradeLevel,
       schoolGrade: Number(q.schoolGrade) || Number(targetSchoolGrade) || 3,
       difficulty: Number(q.difficulty) || Math.min(5, Math.max(1, Math.ceil(Number(targetSchoolGrade) / 2))),
+      options: Array.isArray(q.options) ? shuffleArray(q.options) : q.options,
       xp: q.xp || 30 + (Number(q.difficulty) || 2) * 5,
       coins: q.coins || 12 + (Number(q.difficulty) || 2) * 3,
       source: "schoolbook_scan",
@@ -1070,13 +1132,13 @@ async function startServer() {
     console.warn("Database initialization deferred/skipped:", err);
   }
 
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (process.env.NODE_ENV === "production") {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
@@ -1084,9 +1146,13 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`BrainBoss server running at http://0.0.0.0:${PORT}`);
-  });
+  if (process.env.NODE_ENV !== "test") {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`BrainBoss server running at http://0.0.0.0:${PORT}`);
+    });
+  }
 }
 
 startServer();
+
+export default app;

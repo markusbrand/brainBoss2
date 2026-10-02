@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { Zap, Heart, Clock, ArrowLeft, Lightbulb, Shield, ShieldCheck, Flame, Award, Crown, Volume2 } from 'lucide-react';
+import { Zap, Heart, Clock, ArrowLeft, Lightbulb, Shield, ShieldCheck, Flame, Award, Crown, Volume2, Target } from 'lucide-react';
 import { GameMode, ProblemItem, PlayerProfile, SubjectArea, TargetLearnLanguage } from '../../types';
 import { generateTask } from '../../utils/mathEngine';
 import {
@@ -8,11 +8,14 @@ import {
   generateGeographyProblem,
   generateArtProblem,
   generateLanguageProblem,
+  getMatchingCustomQuestionsList,
+  shuffle,
   speakWord,
   getLanguageDisplayName,
   getLanguageFlag,
   getLangLocale,
 } from '../../utils/subjectEngines';
+import { loadParentConfig, updateChildTaskProgress } from '../../utils/storage';
 import { VisualProblemRenderer } from './VisualProblemRenderer';
 import { MascotBot, MascotMood } from '../MascotBot';
 import { soundFx } from '../../utils/audio';
@@ -45,28 +48,77 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
   const skin = getSkinTheme(profile.skinId || 'cyber_neon');
   const baseDifficulty = profile.manualDifficulty || 2;
 
-  const getProblemForSubject = (subj: SubjectArea, currentDiff: number = baseDifficulty): ProblemItem => {
-    // Effective difficulty calculation based on profile's manual difficulty slider and current streak
+  // Quest mode check (math_quest, language_quest, nature_quest, geo_quest, art_quest)
+  const isQuestMode =
+    mode === 'language_quest' ||
+    mode === 'math_quest' ||
+    mode === 'nature_quest' ||
+    mode === 'geo_quest' ||
+    mode === 'art_quest';
+
+  // Helper to load and shuffle matching custom/scanned questions
+  const loadCustomSessionQueue = (): ProblemItem[] => {
+    if (topic && topic !== 'all') {
+      const customMatches = getMatchingCustomQuestionsList(
+        activeSubj,
+        topic,
+        profile.gradeLevel,
+        baseDifficulty,
+        targetLanguage,
+        profile.id
+      );
+      if (customMatches.length > 0) {
+        return shuffle([...customMatches]) as ProblemItem[];
+      }
+    }
+    return [];
+  };
+
+  const [sessionQueue, setSessionQueue] = useState<ProblemItem[]>(loadCustomSessionQueue);
+  const isCustomSession = sessionQueue.length > 0;
+  const totalSessionQuestions = isCustomSession
+    ? sessionQueue.length
+    : isQuestMode
+    ? 10
+    : 10;
+
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [usedQuestionIds, setUsedQuestionIds] = useState<Set<string | number>>(() => {
+    const initSet = new Set<string | number>();
+    if (sessionQueue[0]) {
+      initSet.add(sessionQueue[0].id);
+    }
+    return initSet;
+  });
+
+  const getProblemForSubject = (
+    subj: SubjectArea,
+    currentDiff: number = baseDifficulty,
+    excludeIds?: (string | number)[]
+  ): ProblemItem => {
     const effectiveDiff = Math.min(5, Math.max(1, Math.round((currentDiff + baseDifficulty) / 2)));
     switch (subj) {
       case 'nature':
-        return generateNatureProblem(topic, profile.gradeLevel, language, effectiveDiff, profile.id);
+        return generateNatureProblem(topic, profile.gradeLevel, language, effectiveDiff, profile.id, excludeIds);
       case 'geography':
-        return generateGeographyProblem(topic, profile.gradeLevel, language, effectiveDiff, profile.id);
+        return generateGeographyProblem(topic, profile.gradeLevel, language, effectiveDiff, profile.id, excludeIds);
       case 'art':
-        return generateArtProblem(topic, profile.gradeLevel, language, effectiveDiff, profile.id);
+        return generateArtProblem(topic, profile.gradeLevel, language, effectiveDiff, profile.id, excludeIds);
       case 'languages':
-        return generateLanguageProblem(targetLanguage, topic, profile.gradeLevel, language, effectiveDiff, profile.id);
+        return generateLanguageProblem(targetLanguage, topic, profile.gradeLevel, language, effectiveDiff, profile.id, excludeIds);
       case 'math':
       default:
-        return generateTask(profile.gradeLevel, topic as any, effectiveDiff, language);
+        return generateTask(profile.gradeLevel, topic as any, effectiveDiff, language, profile.id, excludeIds);
     }
   };
 
   // Game states
-  const [currentProblem, setCurrentProblem] = useState<ProblemItem>(() =>
-    getProblemForSubject(activeSubj, baseDifficulty)
-  );
+  const [currentProblem, setCurrentProblem] = useState<ProblemItem>(() => {
+    if (sessionQueue[0]) {
+      return sessionQueue[0];
+    }
+    return getProblemForSubject(activeSubj, baseDifficulty);
+  });
   const [streak, setStreak] = useState(0);
   const [multiplier, setMultiplier] = useState(1);
   const [score, setScore] = useState(0);
@@ -108,9 +160,30 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
     setShowHint(false);
     setAiHintText(null);
 
-    const nextDiff = Math.min(5, Math.max(1, Math.floor(streak / 3) + 1));
-    const nextProb = getProblemForSubject(activeSubj, nextDiff);
-    setCurrentProblem(nextProb);
+    if (isQuestMode) {
+      const nextIdx = currentQuestionIndex + 1;
+      if (nextIdx >= totalSessionQuestions) {
+        handleGameOver();
+        return;
+      }
+      setCurrentQuestionIndex(nextIdx);
+
+      if (isCustomSession && sessionQueue[nextIdx]) {
+        const nextProb = sessionQueue[nextIdx];
+        setCurrentProblem(nextProb);
+        setUsedQuestionIds((prev) => new Set([...prev, nextProb.id]));
+      } else {
+        const nextDiff = Math.min(5, Math.max(1, Math.floor(streak / 3) + 1));
+        const nextProb = getProblemForSubject(activeSubj, nextDiff, Array.from(usedQuestionIds));
+        setCurrentProblem(nextProb);
+        setUsedQuestionIds((prev) => new Set([...prev, nextProb.id]));
+      }
+    } else {
+      const nextDiff = Math.min(5, Math.max(1, Math.floor(streak / 3) + 1));
+      const nextProb = getProblemForSubject(activeSubj, nextDiff, Array.from(usedQuestionIds));
+      setCurrentProblem(nextProb);
+      setUsedQuestionIds((prev) => new Set([...prev, nextProb.id]));
+    }
 
     if (isWin) {
       if (streak > 0 && streak % 3 === 0) {
@@ -149,15 +222,63 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
     }
   }, [isGameOver, isPaused, mode]);
 
-  // Handle Game Over
+  // Handle Game Over / Quest Victory
   const handleGameOver = () => {
     setIsGameOver(true);
     soundFx.playLevelUp();
     confetti({
-      particleCount: 80,
-      spread: 70,
+      particleCount: 100,
+      spread: 75,
       origin: { y: 0.6 },
     });
+
+    // Advance progress on any matching child task
+    if (topic && topic !== 'all') {
+      try {
+        const cfg = loadParentConfig();
+        const matchingTask = (cfg.tasks || []).find(
+          (t) =>
+            t.status !== 'completed' &&
+            (!t.assignedKidId || t.assignedKidId === 'all' || t.assignedKidId === profile.id) &&
+            (t.topic === topic || (t.subject === activeSubj && topic !== 'all'))
+        );
+        if (matchingTask) {
+          updateChildTaskProgress(matchingTask.id, solvedCount + 1);
+        }
+      } catch {}
+    }
+  };
+
+  // Play Again: Cleanly reset state and reshuffle custom question pool for a fresh non-repeating run
+  const handlePlayAgain = () => {
+    setIsGameOver(false);
+    setStreak(0);
+    setScore(0);
+    setSolvedCount(0);
+    setHearts(3);
+    setBossStage(1);
+    setTimeLeft(mode === 'speed_sprint' || mode === 'vocab_sprint' ? 60 : 35);
+    setCurrentQuestionIndex(0);
+    setFeedbackState('idle');
+    setSelectedOption(null);
+    setShowHint(false);
+    setAiHintText(null);
+    setDisabledOptions([]);
+
+    const newCustomQueue = loadCustomSessionQueue();
+    if (newCustomQueue.length > 0) {
+      setSessionQueue(newCustomQueue);
+      setCurrentProblem(newCustomQueue[0]);
+      setUsedQuestionIds(new Set([newCustomQueue[0].id]));
+    } else {
+      setSessionQueue([]);
+      setUsedQuestionIds(new Set());
+      const firstProb = getProblemForSubject(activeSubj, baseDifficulty);
+      setCurrentProblem(firstProb);
+      setUsedQuestionIds(new Set([firstProb.id]));
+    }
+
+    soundFx.playPop();
   };
 
   // Handle User selecting an option
@@ -219,6 +340,14 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
         } else {
           setBossStage((prev) => prev + 1);
         }
+      }
+
+      // Handle Quest completion on reaching total questions
+      if (isQuestMode && currentQuestionIndex + 1 >= totalSessionQuestions) {
+        setTimeout(() => {
+          handleGameOver();
+        }, 1100);
+        return;
       }
 
       // Auto-advance to next question
@@ -414,6 +543,20 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-950/80 border border-amber-500/50 text-amber-300">
               <Crown className="w-4 h-4 text-amber-400" />
               <span>Boss Stage {bossStage}/{bossTotalStages}</span>
+            </div>
+          )}
+
+          {/* Quest Progress Indicator */}
+          {isQuestMode && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono font-bold text-cyan-300">
+              <Target className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{t.gamePlay.questionOf(currentQuestionIndex + 1, totalSessionQuestions)}</span>
+              <div className="w-14 sm:w-20 h-1.5 bg-slate-800 rounded-full overflow-hidden ml-0.5">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-emerald-400 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.round(((currentQuestionIndex + 1) / totalSessionQuestions) * 100))}%` }}
+                />
+              </div>
             </div>
           )}
 
@@ -710,8 +853,20 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-2xl font-black text-white">{t.gamePlay.gameOver}</h3>
-              <p className="text-xs text-slate-400">{t.gamePlay.victoryTitle}</p>
+              <h3 className="text-2xl font-black text-white">
+                {isQuestMode
+                  ? language === 'de'
+                    ? '🏆 Quest gemeistert!'
+                    : '🏆 Quest Completed!'
+                  : t.gamePlay.gameOver}
+              </h3>
+              <p className="text-xs text-slate-400">
+                {isCustomSession
+                  ? language === 'de'
+                    ? `Alle ${totalSessionQuestions} Aufgaben aus "${topic.replace(/_/g, ' ')}" abgeschlossen!`
+                    : `All ${totalSessionQuestions} exercises from "${topic.replace(/_/g, ' ')}" completed!`
+                  : t.gamePlay.victoryTitle}
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3 bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left">
@@ -721,21 +876,17 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 block">{t.questView.totalSolved}</span>
-                <span className="text-xl font-bold text-emerald-400">{solvedCount}</span>
+                <span className="text-xl font-bold text-emerald-400">
+                  {isQuestMode ? `${solvedCount} / ${totalSessionQuestions}` : solvedCount}
+                </span>
               </div>
             </div>
 
             <div className="flex gap-3">
               <button
-                onClick={() => {
-                  setIsGameOver(false);
-                  setStreak(0);
-                  setScore(0);
-                  setHearts(3);
-                  setTimeLeft(mode === 'speed_sprint' || mode === 'vocab_sprint' ? 60 : 35);
-                  loadNextProblem(true);
-                }}
-                className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors cursor-pointer"
+                id="btn-play-again-session"
+                onClick={handlePlayAgain}
+                className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors cursor-pointer shadow-lg"
               >
                 {t.gamePlay.playAgain}
               </button>

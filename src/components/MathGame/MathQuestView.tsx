@@ -779,49 +779,7 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              {/* Dedicated Focus Topic Quiz Mode Card */}
-              {matchingTestForSelectedTopic && onStartTest && (
-                <div
-                  id="mode-card-official-quiz"
-                  onClick={() => {
-                    soundFx.playCorrect();
-                    onStartTest(matchingTestForSelectedTopic);
-                  }}
-                  className="group relative rounded-2xl p-4 sm:p-5 border hover:scale-[1.02] transition-all cursor-pointer flex flex-col justify-between shadow-lg bg-linear-to-br from-amber-950/70 via-slate-900 to-amber-950/40 border-amber-500/60 ring-1 ring-amber-400/40"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                        🏆
-                      </div>
-                      <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/25 text-amber-300 border border-amber-500/40 animate-pulse">
-                        {isGerman ? 'Schultest / Quiz' : 'School Quiz'}
-                      </span>
-                    </div>
-                    <h4 className="font-extrabold text-amber-200 text-base group-hover:text-white transition-colors">
-                      {matchingTestForSelectedTopic.title}
-                    </h4>
-                    <p className="text-xs text-slate-300/90 leading-relaxed line-clamp-2">
-                      {isGerman
-                        ? `Offizieller Schultest zum Fokus-Thema „${matchingTestForSelectedTopic.topic || 'Unit 1'}“ (${matchingTestForSelectedTopic.questions?.length || 0} Fragen).`
-                        : `Official test for focus topic "${matchingTestForSelectedTopic.topic || 'Unit 1'}" (${matchingTestForSelectedTopic.questions?.length || 0} questions).`}
-                    </p>
-                  </div>
 
-                  <div className="pt-3 flex items-center justify-between border-t border-amber-500/30 mt-3">
-                    <span className="text-xs font-mono font-bold text-amber-400">
-                      +{matchingTestForSelectedTopic.rewardXp || 150} XP
-                    </span>
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1 shadow cursor-pointer transition-transform group-hover:scale-105"
-                    >
-                      <Award className="w-3.5 h-3.5 fill-slate-950" />
-                      <span>{isGerman ? 'Quiz starten' : 'Start Quiz'}</span>
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* Mode 1: Core Subject Quest */}
               <div

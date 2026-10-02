@@ -68,13 +68,21 @@ interface CuratedModelOption {
 
 const CURATED_OPENROUTER_MODELS: CuratedModelOption[] = [
   {
-    id: 'google/gemini-2.0-flash-001',
-    name: 'Gemini 2.0 Flash',
-    badge: '⭐ Standard (Schnell & Günstig)',
+    id: 'openai/gpt-4o-mini',
+    name: 'GPT-4o Mini',
+    badge: '⭐ Standard (Zuverlässig & Günstig)',
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-    descriptionDe: 'Hervorragende Multimodal-Vision, extrem schnell bei Vokabeln & Tabellen, sehr niedrige Tokenkosten.',
-    descriptionEn: 'High-speed multimodal OCR, great for school vocabularies at minimal cost.',
+    descriptionDe: 'Perfekt für extrem striktes JSON. Übersieht nichts, super günstig.',
+    descriptionEn: 'Perfect for extremely strict JSON formatting and exhaustive instruction following.',
     recommended: true,
+  },
+  {
+    id: 'google/gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    badge: '👁️ Bestes OCR',
+    badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+    descriptionDe: 'Hervorragende Bilderkennung für unleserliche Hausübungen.',
+    descriptionEn: 'Top-tier image recognition for messy handwriting.',
   },
   {
     id: 'anthropic/claude-3.5-sonnet',
@@ -138,9 +146,13 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
   const [aiProvider, setAiProvider] = useState<'openrouter' | 'gemini'>(
     config.openRouter?.provider || 'openrouter'
   );
-  const [openRouterModel, setOpenRouterModel] = useState<string>(
-    config.openRouter?.selectedModel || 'google/gemini-2.0-flash-001'
-  );
+  const [openRouterModel, setOpenRouterModel] = useState<string>(() => {
+    const saved = config.openRouter?.selectedModel;
+    if (!saved || saved === 'google/gemini-2.0-flash-001' || saved === 'google/gemini-3.8-flash') {
+      return 'openai/gpt-4o-mini';
+    }
+    return saved;
+  });
   const [openRouterApiKey, setOpenRouterApiKey] = useState<string>(
     config.openRouter?.apiKey || ''
   );
@@ -156,7 +168,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
   const [selectedImages, setSelectedImages] = useState<Array<{ id: string; dataUrl: string; name: string }>>([]);
   const [selectedCategory, setSelectedCategory] = useState<SubjectArea>('languages');
   const [autoCreateTest, setAutoCreateTest] = useState<boolean>(true);
-  const [autoCreateTask, setAutoCreateTask] = useState<boolean>(true);
+  const [autoCreateTask, setAutoCreateTask] = useState<boolean>(false);
   const [bookTitle, setBookTitle] = useState<string>('');
   const [focusTopic, setFocusTopic] = useState<string>('English Book Unit 1');
   const [selectedKidId, setSelectedKidId] = useState<string>(config?.activeKidId || (config?.kids?.[0]?.id ?? 'all'));
@@ -217,7 +229,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           apiKey: openRouterApiKey.trim(),
-          model: effectiveModel || 'google/gemini-2.0-flash-001',
+          model: effectiveModel || 'openai/gpt-4o-mini',
         }),
       });
       const data = await res.json();
@@ -263,14 +275,12 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
     setErrorMessage(null);
 
     Array.from(files).forEach((file) => {
-      if (!file.type.startsWith('image/')) {
-        setErrorMessage(isDe ? 'Bitte nur Bilddateien (JPG, PNG, WebP) hochladen.' : 'Please upload image files only.');
-        return;
-      }
+      // Relaxed file type validation to allow all drag&dropped images from various OS / mobile devices
+      // Only strictly enforcing file size.
 
-      // Check max size (15MB per image)
-      if (file.size > 15 * 1024 * 1024) {
-        setErrorMessage(isDe ? 'Bild ist zu groß (max. 15MB).' : 'Image is too large (max 15MB).');
+      // Check max size (50MB per image)
+      if (file.size > 50 * 1024 * 1024) {
+        setErrorMessage(isDe ? 'Bild ist zu groß (max. 50MB).' : 'Image is too large (max 50MB).');
         return;
       }
 
@@ -391,6 +401,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
         const targetKids = selectedKidId === 'all' ? config.kids.map((k) => k.id) : [selectedKidId];
         const newTest: ChildTest = {
           id: `test-scan-${Date.now()}`,
+          scanBatchId: newBatch.id,
           title: `${finalTopic} (1. Schularbeit / Quiz)`,
           description: data.extractedSummary || (isDe ? `Offizieller Schultest zu ${finalTopic}` : `School test for ${finalTopic}`),
           subject: newBatch.subject,
@@ -411,6 +422,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
       if (autoCreateTask) {
         const newTask: ChildTask = {
           id: `task-scan-${Date.now()}`,
+          scanBatchId: newBatch.id,
           title: `${finalTopic}: Vokabel- & Aufgaben-Training`,
           description: isDe ? `Löse alle ${formattedQuestions.length} Aufgaben aus ${finalTopic} für Belohnungen!` : `Solve all ${formattedQuestions.length} exercises from ${finalTopic}!`,
           subject: newBatch.subject,
@@ -477,6 +489,12 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
     if (lastProcessedBatch?.id === batchId) setLastProcessedBatch(null);
     setBatchToDelete(null);
     soundFx.playPop();
+    
+    // Trigger config refresh to update Tests & Tasks lists in Parent Center
+    if (onConfigChange) {
+      onConfigChange(loadParentConfig());
+    }
+
     setStatusMessage(isDe ? 'Schulbuch-Scan und Aufgaben wurden erfolgreich gelöscht.' : 'Scan and questions deleted successfully.');
     setTimeout(() => setStatusMessage(null), 4000);
   };
@@ -817,6 +835,14 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
 
             {/* Drag & Drop Zone */}
             <div
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -833,7 +859,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
               <p className="text-xs text-slate-400">
                 {isDe ? 'Oder Fotos hierher ziehen (z.B. Arbeitsblätter, Schulbuchseiten)' : 'Or drag & drop worksheet or textbook photos here'}
               </p>
-              <p className="text-[10px] text-slate-500">JPG, PNG, WebP (max. 15MB)</p>
+              <p className="text-[10px] text-slate-500">JPG, PNG, WebP (max. 50MB)</p>
             </div>
 
             {/* Selected Images Preview Thumbnails */}
