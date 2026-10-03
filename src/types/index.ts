@@ -102,6 +102,56 @@ export interface VisualProblemData {
 
 export type VisualMathData = VisualProblemData;
 
+/**
+ * Interactive exercise formats. Questions without `exerciseType` are classic
+ * multiple choice questions (backwards compatible).
+ *
+ * Choice-based types use `options` + `correctAnswer`.
+ * Interactive types (tiles, matching, sorting) encode their solution as a
+ * canonical string in `correctAnswer` (see `utils/exerciseAnswers.ts`).
+ */
+export type ExerciseType =
+  | 'multiple_choice'
+  | 'listen_choose'
+  | 'emoji_choice'
+  | 'visual_choice'
+  | 'dialogue_complete'
+  | 'sentence_builder'
+  | 'letter_puzzle'
+  | 'cloze_wordbank'
+  | 'dialogue_order'
+  | 'match_pairs'
+  | 'category_sort';
+
+export interface ExerciseData {
+  /** Shuffled tiles for ordering / word bank exercises. */
+  tiles?: string[];
+  /** Separator used to join ordered tiles into the canonical answer. */
+  separator?: string;
+  /** Sentence containing `___` for cloze exercises. */
+  clozeSentence?: string;
+  /** Left/right pairs for matching exercises. */
+  pairs?: { left: string; right: string }[];
+  /** Category buckets for sorting exercises. */
+  categories?: string[];
+  /** Items to sort into `categories`. */
+  sortItems?: { text: string; category: string }[];
+  /** Big emoji stimulus. */
+  emoji?: string;
+  /** Colour swatch stimulus. */
+  colorHex?: string;
+  /** Number stimulus (e.g. 17). */
+  numberValue?: number;
+  /** Text spoken by TTS as stimulus (listening exercises). */
+  speakText?: string;
+  /** Text spoken after the exercise was solved. */
+  solutionSpeech?: string;
+  /** Previous dialogue lines shown as context. */
+  dialogueContext?: { speaker: string; text: string }[];
+  /** English vocabulary terms this exercise trains. */
+  targetVocab?: string[];
+}
+
 export interface ProblemItem {
   id: string;
   subject?: SubjectArea;
@@ -113,6 +163,8 @@ export interface ProblemItem {
   question: string;
   subtext?: string;
   visual?: VisualProblemData;
+  exerciseType?: ExerciseType;
+  exerciseData?: ExerciseData;
   options: (number | string)[];
   correctAnswer: number | string;
   explanation: string;
