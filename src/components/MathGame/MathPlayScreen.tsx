@@ -17,6 +17,8 @@ import {
 } from '../../utils/subjectEngines';
 import { loadParentConfig, updateChildTaskProgress } from '../../utils/storage';
 import { VisualProblemRenderer } from './VisualProblemRenderer';
+import { isInteractiveExercise, isAnswerCorrect } from '../../utils/exerciseAnswers';
+import { InteractiveExerciseRenderer } from './InteractiveExerciseRenderer';
 import { MascotBot, MascotMood } from '../MascotBot';
 import { soundFx } from '../../utils/audio';
 import { getSkinTheme } from '../../utils/skins';
@@ -286,7 +288,7 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
     if (feedbackState !== 'idle' || isGameOver) return;
 
     setSelectedOption(option);
-    const isCorrect = String(option).trim().toLowerCase() === String(currentProblem.correctAnswer).trim().toLowerCase();
+    const isCorrect = isAnswerCorrect(currentProblem, option);
 
     if (isCorrect) {
       // WIN SOUND & TOAST
@@ -649,8 +651,16 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
           )}
         </div>
 
-        {/* Options Grid (4 Tactile Buttons) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        {/* Interactive Renderer or Options Grid */}
+        {isInteractiveExercise(currentProblem) ? (
+          <InteractiveExerciseRenderer 
+            problem={currentProblem}
+            skin={skin}
+            onAnswerSubmit={handleOptionClick}
+            disabled={feedbackState !== 'idle'}
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {currentProblem.options.map((option, idx) => {
             const isSelected = selectedOption === option;
             const isCorrect = String(option).trim().toLowerCase() === String(currentProblem.correctAnswer).trim().toLowerCase();
@@ -719,6 +729,7 @@ export const MathPlayScreen: React.FC<MathPlayScreenProps> = ({
             );
           })}
         </div>
+        )}
 
         {/* Step-by-Step Hint / Explanation Accordion */}
         {showHint && (

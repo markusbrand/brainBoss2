@@ -4,6 +4,9 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { initDatabase, checkDbStatus, getRemoteData, syncPushData } from "./src/server/db";
+import { buildVocabExtractionPrompt, sanitizeMaterial } from './src/server/vocabExtraction';
+import type { ExtractedMaterial } from './src/utils/vocabExerciseGenerator';
+import { generateExercisesFromMaterial, sampleBalancedTest } from './src/utils/vocabExerciseGenerator';
 
 dotenv.config();
 
@@ -619,18 +622,13 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
       category = "",
       targetSchoolGrade = 3,
       assignedKidId = "all",
-      targetLanguage = "en",
       notes = "",
-      language = "de",
       provider = "openrouter", // 'openrouter' | 'gemini'
       openRouterApiKey = "",
-      openRouterModel = "google/gemini-2.0-flash-001",
     } = req.body;
 
     console.log("==> /scan-schoolbook requested!");
     console.log(`Images length: ${images.length}, provider: ${provider}`);
-    console.log(`Body openRouterApiKey provided? ${!!openRouterApiKey}`);
-    console.log(`Env OPENROUTER_API_KEY provided? ${!!process.env.OPENROUTER_API_KEY}`);
 
     const rawImages: string[] = [];
     if (Array.isArray(images) && images.length > 0) {
@@ -639,124 +637,38 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
       rawImages.push(image);
     }
     
-    console.log(`rawImages length after filter: ${rawImages.length}`);
-
-    const isGerman = language === "de";
-    const targetLangName = isGerman ? "German (Deutsch)" : "English";
     const effectiveSubject = category || requestedSubject || "languages";
     const batchId = `scan-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const effectiveOpenRouterKey = openRouterApiKey || process.env.OPENROUTER_API_KEY || "";
     const detectedGradeLevel = targetSchoolGrade > 4 ? "high_school" : "primary";
 
-    // Prepare rich prompt specialized for German native kids learning English as a foreign language
-    const categoryConstraint = effectiveSubject
-      ? `Enforce Subject Category: "${effectiveSubject}". The exercises MUST strictly match this category.`
-      : `Determine the best Subject Category: 'languages' (English, French, etc.), 'math', 'nature', 'geography', or 'art'.`;
+    const promptText = buildVocabExtractionPrompt({
+      bookTitle,
+      targetSchoolGrade,
+      notes
+    });
 
-    const promptText = `You are an expert AI school tutor and curriculum digitization specialist for the kids & teens education platform BrainBoss.
-Analyze the attached photo(s) of schoolbook pages, homework notebooks, tests, or worksheets.
-
-Context provided by teacher/parent:
-- Selected Category: "${effectiveSubject || 'languages'}" (${categoryConstraint})
-- Provided Book/Chapter Title: "${bookTitle || 'English Textbook / Workbook'}"
-- Target School Grade: ${targetSchoolGrade}. Schulstufe (1-4 = Grundschule / Primary; 5-8 = Mittelschule / Gymnasium / Secondary)
-- Target Foreign Language: ${targetLanguage || 'en'} (English)
-- Student Native Language: German (Deutsch). The children's native language is German and they are learning English as a foreign language!
-- Special Goal: First English Test / Exam Preparation (1. Schularbeit / Erster Englisch-Test) covering basic foundational vocabulary and core grammar rules.
-- Extra Teacher Notes: "${notes || 'Gather rich exercise ideas from the pages: vocabulary translation, meaning comprehension, articles a/an, verb to be, school objects, numbers, and classroom phrases.'}"
-- Output Language: ${targetLangName} (All question instructions, explanations, options, hints MUST be kid-friendly and in ${targetLangName}, while target foreign vocabulary remains in English).
-
-Your Task:
-1. Carefully inspect and transcribe all exercises, vocabulary lists, dialogues, and grammar boxes shown on the book page(s).
-2. For English Language Learning (German native speakers learning English):
-   - Gather diverse exercise types directly from the exercises provided in the book:
-     a) German -> English vocabulary translation ("Wie heißt 'das Federmäppchen' auf Englisch?")
-     b) English -> German meaning comprehension ("Was bedeutet 'ruler' auf Deutsch?")
-     c) Indefinite articles: 'a' vs 'an' ("Setze 'a' oder 'an' ein: This is ___ apple / ___ pencil.")
-     d) The verb 'to be' (am / is / are) in simple present ("I ___ 10 years old. He ___ my friend.")
-     e) School items & stationery (pencil, pen, rubber, ruler, book, notebook, schoolbag, desk, blackboard)
-     f) Numbers 1-20 & Spelling (one, two ... twelve, twenty)
-     g) Classroom instructions & greetings (Good morning, What is your name?, How are you?, Open your book)
-     h) Plural formation (one book -> two books, one box -> two boxes)
-     i) Colours & descriptions
-   - For every question, include 'pronounceText' with the authentic English word or sentence and 'pronounceLang': 'en-US' (or 'en-GB') so the child can tap to hear native audio!
-   - Include 'imagePrompt' with a friendly, vivid illustration prompt to enhance visual memory!
-   - Include kid-friendly explanations in German ('explanation') that clearly explain the rule or meaning so the child learns from mistakes!
-3. For Math, Nature, Geography, Art:
-   - Faithfully digitize the page problems into interactive multiple-choice questions with educational explanations and hints.
-4. Generate an EXHAUSTIVE set of structured, interactive multiple-choice questions directly derived from the book page(s). 
-CRITICAL RULES FOR EXHAUSTION:
-- You MUST extract EVERY SINGLE vocabulary word, grammar rule, text comprehension detail, and exercise item found in all photos.
-- DO NOT summarize. DO NOT stop early. If there are 11 pages, generate 50-150 questions to cover ALL material completely.
-- Laziness is strictly forbidden. 
-5. Output strictly valid JSON matching this schema:
-{
-  "batchTitle": "Concise informative title in ${targetLangName} (e.g., 'English Unit 1-2: School & First Test Prep' or 'Mathebuch S. 42: Bruchrechnen')",
-  "detectedSubject": "${effectiveSubject || 'languages'}",
-  "detectedTopic": "topic_identifier",
-  "schoolGrade": ${targetSchoolGrade || 3},
-  "gradeLevel": "${detectedGradeLevel}",
-  "totalItemsFoundInImages": "integer representing the true count of all learnable items in the images",
-  "extractedSummary": "1-2 sentences in ${targetLangName} summarizing the extracted workbook topics and exercises",
-  "questions": [
-    {
-      "id": "scan-q-1",
-      "subject": "${effectiveSubject || 'languages'}",
-      "topic": "topic_identifier",
-      "gradeLevel": "${detectedGradeLevel}",
-      "schoolGrade": ${targetSchoolGrade || 3},
-      "difficulty": 1, 2, 3, 4, or 5,
-      "question": "Clear, well-formatted question text in ${targetLangName}",
-      "subtext": "Brief book reference or vocabulary clue (e.g. 'Vokabel-Check: Schulsachen' or 'Grammatik: a vs. an')",
-      "options": ["Correct Option", "Distractor B", "Distractor C", "Distractor D"],
-      "correctAnswer": "Correct Option (Must exactly equal one item in options array)",
-      "explanation": "Kid-friendly explanation in German explaining why this is correct and the grammar rule",
-      "hint": "Helpful educational hint in German without directly giving away the answer",
-      "visual": {
-        "pronounceText": "English word or phrase to pronounce (e.g. 'pencil case')",
-        "pronounceLang": "en-US",
-        "imagePrompt": "Vivid cartoon illustration prompt describing the word or concept"
-      },
-      "xp": 30,
-      "coins": 15
-    }
-  ]
-}
-Make sure every question has 4 distinct options and the correctAnswer is exactly identical to one of the options.`;
-
-    let parsedResult: any = null;
+    let extractedMaterial: ExtractedMaterial & { batchTitle?: string; extractedSummary?: string } | null = null;
     let usedProvider = "gemini";
     let usedModel = "gemini-2.5-flash";
 
-    // 1. Try OpenRouter if requested or configured (Pipeline Approach)
+    // 1. Try OpenRouter if configured
     if ((provider === "openrouter" || effectiveOpenRouterKey) && rawImages.length > 0) {
       if (effectiveOpenRouterKey) {
         try {
           usedProvider = "openrouter";
-          usedModel = "Pipeline: gemini-2.5-flash -> gpt-4o-mini";
+          usedModel = "google/gemini-2.5-flash"; // We use flash directly for vision->json
           
-          console.log("Starting Pipeline Step 1: Vision Extraction");
-          // Step 1: Extract all text from images using the best vision model
-          const visionPrompt = "Carefully transcribe all text, vocabulary lists, dialogues, and exercises from these images exactly as they appear. Do not summarize or format as questions yet. Just give me the raw text of everything on these pages.";
-          const rawTranscribedText = await callOpenRouterCompletion(
+          console.log("Starting OpenRouter Extraction");
+          const openRouterResult = await callOpenRouterCompletion(
             effectiveOpenRouterKey,
-            "google/gemini-2.5-flash", // Best for OCR
-            visionPrompt,
+            usedModel,
+            promptText,
             rawImages,
-            false // no JSON required
+            true // JSON required
           );
-
-          console.log("Starting Pipeline Step 2: JSON Generation");
-          // Step 2: Generate JSON using the best instruction-following model
-          const generationPrompt = promptText + "\n\nHere is the exact transcribed text from the images. Use this text as your sole source of truth for the extraction:\n\n" + rawTranscribedText;
           
-          parsedResult = await callOpenRouterCompletion(
-            effectiveOpenRouterKey,
-            "openai/gpt-4o-mini", // Best for JSON
-            generationPrompt,
-            [], // No images needed here, saving cost and context
-            true
-          );
+          extractedMaterial = sanitizeMaterial(openRouterResult);
         } catch (openRouterErr: any) {
           console.warn("OpenRouter pipeline failed, attempting Gemini fallback:", openRouterErr.message);
         }
@@ -764,7 +676,7 @@ Make sure every question has 4 distinct options and the correctAnswer is exactly
     }
 
     // 2. Try Server-Side Gemini if OpenRouter didn't run or failed
-    if (!parsedResult && rawImages.length > 0) {
+    if (!extractedMaterial && rawImages.length > 0) {
       const ai = getGeminiClient();
       if (ai) {
         try {
@@ -804,314 +716,65 @@ Make sure every question has 4 distinct options and the correctAnswer is exactly
             },
           });
 
-          parsedResult = JSON.parse(response.text || "{}");
+          extractedMaterial = sanitizeMaterial(JSON.parse(response.text || "{}"));
         } catch (geminiErr: any) {
           console.warn("Gemini vision call failed:", geminiErr.message);
         }
       }
     }
 
-    // 3. High-Quality Curriculum Fallback (if no API keys or offline test scan)
-    if (!parsedResult || !Array.isArray(parsedResult.questions) || parsedResult.questions.length === 0) {
+    // 3. Fallback (if no API keys or failure)
+    if (!extractedMaterial || (!extractedMaterial.vocab.length && !extractedMaterial.dialogues.length)) {
       usedProvider = "curriculum_engine";
       usedModel = "brainboss-curriculum-v1";
-
-      const isLanguage = effectiveSubject === "languages";
-      const fallbackBatchTitle = bookTitle || (isLanguage
-        ? (isGerman ? `Englisch Schulbuch-Scan: Erste Schularbeit` : `English Textbook Scan: 1st Test Prep`)
-        : (isGerman ? `Schulbuch-Scan (${new Date().toLocaleDateString('de-DE')})` : `Book Scan (${new Date().toLocaleDateString()})`));
-
-      const fallbackQuestions = isLanguage ? [
-        {
-          id: `scan-q-${batchId}-1`,
-          subject: "languages",
-          topic: "basic_vocab",
-          gradeLevel: detectedGradeLevel,
-          schoolGrade: Number(targetSchoolGrade) || 3,
-          difficulty: 2,
-          question: isGerman
-            ? "Wie lautet die richtige englische Vokabel für ‚die Schultasche‘?"
-            : "What is the English word for 'die Schultasche'?",
-          subtext: isGerman ? "Schulsachen & Schulstart" : "School items",
-          options: ["schoolbag", "pencil case", "notebook", "classroom"],
-          correctAnswer: "schoolbag",
-          explanation: isGerman
-            ? "‚Schoolbag‘ ist die Schultasche (oder der Schulranzen). Zusammengesetzt aus ‚school‘ (Schule) und ‚bag‘ (Tasche)."
-            : "'Schoolbag' is composed of 'school' and 'bag'.",
-          hint: isGerman ? "Besteht aus zwei Wörtern: school + bag." : "Compound word with 'bag'.",
-          visual: {
-            pronounceText: "schoolbag",
-            pronounceLang: "en-US",
-            imagePrompt: "A colourful blue and yellow schoolbag with straps and a water bottle holder",
-          },
-          xp: 30,
-          coins: 15,
-          source: "schoolbook_scan",
-          scanBatchId: batchId,
-          scanBatchTitle: fallbackBatchTitle,
-          assignedKidId,
-        },
-        {
-          id: `scan-q-${batchId}-2`,
-          subject: "languages",
-          topic: "grammar_articles",
-          gradeLevel: detectedGradeLevel,
-          schoolGrade: Number(targetSchoolGrade) || 3,
-          difficulty: 2,
-          question: isGerman
-            ? "Setze den richtigen unbestimmten Artikel ein: ‚Look, this is ___ apple and that is ___ book.‘"
-            : "Choose the correct article: 'Look, this is ___ apple and that is ___ book.'",
-          subtext: isGerman ? "Grammatik: a oder an?" : "Grammar: a vs an",
-          options: ["an / a", "a / an", "a / a", "an / an"],
-          correctAnswer: "an / a",
-          explanation: isGerman
-            ? "Vor Vokalen (a, e, i, o, u) steht ‚an‘ (z.B. an apple, an eraser). Vor Konsonanten steht ‚a‘ (z.B. a book, a pencil)!"
-            : "Use 'an' before vowel sounds (an apple) and 'a' before consonants (a book).",
-          hint: isGerman ? "Beginnt das Wort mit einem Vokal (A-E-I-O-U)?" : "Vowel rule: a, e, i, o, u get 'an'.",
-          visual: {
-            pronounceText: "an apple and a book",
-            pronounceLang: "en-US",
-            imagePrompt: "A crisp red apple sitting right beside an open school textbook",
-          },
-          xp: 35,
-          coins: 18,
-          source: "schoolbook_scan",
-          scanBatchId: batchId,
-          scanBatchTitle: fallbackBatchTitle,
-          assignedKidId,
-        },
-        {
-          id: `scan-q-${batchId}-3`,
-          subject: "languages",
-          topic: "basic_vocab",
-          gradeLevel: detectedGradeLevel,
-          schoolGrade: Number(targetSchoolGrade) || 3,
-          difficulty: 2,
-          question: isGerman
-            ? "Was bedeutet das englische Wort ‚ruler‘ im Klassenzimmer?"
-            : "What does the English word 'ruler' mean?",
-          subtext: isGerman ? "Vokabel-Verständnis" : "Vocabulary comprehension",
-          options: ["Lineal", "Radiergummi", "Bleistiftspitzer", "Schere"],
-          correctAnswer: "Lineal",
-          explanation: isGerman
-            ? "‚Ruler‘ bedeutet Lineal auf Deutsch. Zum Zeichnen gerader Linien und Messen!"
-            : "'Ruler' means Lineal in German.",
-          hint: isGerman ? "Damit misst man Zentimeter und zeichnet gerade Striche." : "Used to measure centimeters.",
-          visual: {
-            pronounceText: "ruler",
-            pronounceLang: "en-US",
-            imagePrompt: "A clear 30-centimeter plastic ruler with measurement markings",
-          },
-          xp: 30,
-          coins: 15,
-          source: "schoolbook_scan",
-          scanBatchId: batchId,
-          scanBatchTitle: fallbackBatchTitle,
-          assignedKidId,
-        },
-        {
-          id: `scan-q-${batchId}-4`,
-          subject: "languages",
-          topic: "grammar_verbs_tenses",
-          gradeLevel: detectedGradeLevel,
-          schoolGrade: Number(targetSchoolGrade) || 3,
-          difficulty: 2,
-          question: isGerman
-            ? "Vervollständige die Formen des Verbs ‚to be‘: ‚I ___ ten years old and my friends ___ here.‘"
-            : "Complete with 'to be': 'I ___ ten years old and my friends ___ here.'",
-          subtext: isGerman ? "Verb 'to be' (am / is / are)" : "The verb 'to be'",
-          options: ["am / are", "is / am", "are / is", "am / is"],
-          correctAnswer: "am / are",
-          explanation: isGerman
-            ? "Es heißt: I am (ich bin), you are, he/she/it is, we are, you are, they are (my friends = Mehrzahl, also 'are')."
-            : "I am, you are, he/she/it is, we are, they are.",
-          hint: isGerman ? "Bei 'I' steht immer 'am'. Bei mehreren Freunden steht 'are'." : "I am, friends = plural are.",
-          visual: {
-            pronounceText: "I am ten years old and my friends are here",
-            pronounceLang: "en-US",
-            imagePrompt: "A group of cheerful young school friends smiling together in class",
-          },
-          xp: 40,
-          coins: 20,
-          source: "schoolbook_scan",
-          scanBatchId: batchId,
-          scanBatchTitle: fallbackBatchTitle,
-          assignedKidId,
-        },
-        {
-          id: `scan-q-${batchId}-5`,
-          subject: "languages",
-          topic: "numbers_colors",
-          gradeLevel: detectedGradeLevel,
-          schoolGrade: Number(targetSchoolGrade) || 3,
-          difficulty: 2,
-          question: isGerman
-            ? "Wie schreibt man die Zahl 12 auf Englisch richtig?"
-            : "How do you correctly spell the number 12 in English?",
-          subtext: isGerman ? "Zahlen & Rechtschreibung 1-20" : "Numbers & Spelling",
-          options: ["twelve", "twelf", "twelv", "twenty"],
-          correctAnswer: "twelve",
-          explanation: isGerman
-            ? "Die Zahl 12 heißt auf Englisch ‚twelve‘. Achtung: 20 heißt ‚twenty‘!"
-            : "12 is spelled t-w-e-l-v-e.",
-          hint: isGerman ? "Endet mit '-ve'." : "Ends in '-ve'.",
-          visual: {
-            pronounceText: "twelve",
-            pronounceLang: "en-US",
-            imagePrompt: "A big golden number 12 surrounded by bright stars and balloons",
-          },
-          xp: 30,
-          coins: 15,
-          source: "schoolbook_scan",
-          scanBatchId: batchId,
-          scanBatchTitle: fallbackBatchTitle,
-          assignedKidId,
-        },
-        {
-          id: `scan-q-${batchId}-6`,
-          subject: "languages",
-          topic: "common_phrases",
-          gradeLevel: detectedGradeLevel,
-          schoolGrade: Number(targetSchoolGrade) || 3,
-          difficulty: 2,
-          question: isGerman
-            ? "Was bedeutet die Anweisung der Lehrerin: ‚Open your books at page 10!‘?"
-            : "What does 'Open your books at page 10!' mean?",
-          subtext: isGerman ? "Classroom English / Anweisungen" : "Classroom English",
-          options: [
-            "Schlagt eure Bücher auf Seite 10 auf!",
-            "Schließt eure Bücher und hört zu!",
-            "Schreibt die Übung auf Seite 10 ab!",
-            "Gebt eure Hefte bei der Lehrerin ab!"
-          ],
-          correctAnswer: "Schlagt eure Bücher auf Seite 10 auf!",
-          explanation: isGerman
-            ? "‚Open‘ bedeutet öffnen/aufschlagen und ‚page 10‘ ist Seite 10. Das Gegenteil ist ‚Close your books‘!"
-            : "'Open your books at page 10' means open them to that page.",
-          hint: isGerman ? "‚Open‘ heißt öffnen oder aufschlagen." : "'Open' means Aufschlagen.",
-          visual: {
-            pronounceText: "Open your books at page ten",
-            pronounceLang: "en-US",
-            imagePrompt: "A friendly teacher holding up an open textbook in a bright classroom",
-          },
-          xp: 35,
-          coins: 18,
-          source: "schoolbook_scan",
-          scanBatchId: batchId,
-          scanBatchTitle: fallbackBatchTitle,
-          assignedKidId,
-        },
-      ] : [
-        {
-          id: `scan-q-${batchId}-1`,
-          subject: effectiveSubject,
-          topic: effectiveSubject === "math" ? "addition_subtraction" : "general_scan",
-          gradeLevel: detectedGradeLevel,
-          schoolGrade: Number(targetSchoolGrade) || 3,
-          difficulty: 2,
-          question: isGerman
-            ? `[Aus Schulbuch-Scan] Berechne bzw. löse die Übung: Wie lautet das Ergebnis von (14 + 18) × 2?`
-            : `[From Book Scan] Solve: (14 + 18) × 2?`,
-          subtext: isGerman ? `Erkannt aus: ${bookTitle || "Schulbuch-Seite"}` : `Extracted from: ${bookTitle || "Textbook Page"}`,
-          options: ["64", "58", "62", "70"],
-          correctAnswer: "64",
-          explanation: isGerman
-            ? "Zuerst Klammer berechnen: 14 + 18 = 32. Danach 32 × 2 = 64."
-            : "14 + 18 = 32. Then 32 × 2 = 64.",
-          hint: isGerman ? "Klammern haben immer Vorrang!" : "Parentheses first!",
-          xp: 35,
-          coins: 15,
-          source: "schoolbook_scan",
-          scanBatchId: batchId,
-          scanBatchTitle: fallbackBatchTitle,
-          assignedKidId,
-        },
-        {
-          id: `scan-q-${batchId}-2`,
-          subject: effectiveSubject,
-          topic: effectiveSubject === "math" ? "fractions_visual" : "general_scan",
-          gradeLevel: detectedGradeLevel,
-          schoolGrade: Number(targetSchoolGrade) || 3,
-          difficulty: 2,
-          question: isGerman
-            ? `[Aus Schulbuch-Scan] Welche Aussage zur Zahl 64 ist mathematisch korrekt?`
-            : `[From Book Scan] Which statement about 64 is correct?`,
-          subtext: isGerman ? "Aufgabenheft-Analyse" : "Worksheet Analysis",
-          options: [
-            "64 ist gerade und durch 4 teilbar (64 ÷ 4 = 16)",
-            "64 ist eine ungerade Primzahl",
-            "64 ist kleiner als 50",
-            "64 ist nur durch 3 teilbar"
-          ],
-          correctAnswer: "64 ist gerade und durch 4 teilbar (64 ÷ 4 = 16)",
-          explanation: isGerman
-            ? "64 ist eine gerade Zahl und 64 ÷ 4 = 16 (ohne Rest)."
-            : "64 is even and divisible by 4.",
-          hint: isGerman ? "Prüfe Teilbarkeitsregeln für gerade Zahlen." : "Check divisibility.",
-          xp: 35,
-          coins: 15,
-          source: "schoolbook_scan",
-          scanBatchId: batchId,
-          scanBatchTitle: fallbackBatchTitle,
-          assignedKidId,
-        },
-      ];
-
-      return res.json({
-        batchId,
-        batchTitle: fallbackBatchTitle,
-        detectedSubject: effectiveSubject,
-        detectedTopic: isLanguage ? "basic_vocab" : "general_scan",
-        schoolGrade: Number(targetSchoolGrade) || 3,
-        gradeLevel: detectedGradeLevel,
-        assignedKidId,
-        aiModelUsed: usedModel,
-        aiProviderUsed: usedProvider,
-        extractedSummary: isGerman
-          ? `Erfolgreich ${fallbackQuestions.length} gezielte Übungsaufgaben für den 1. Test vorbereitet (Vokabeln, Grammatik, Aussprache & Erklärungen).`
-          : `Successfully generated ${fallbackQuestions.length} practice exercises for 1st test prep.`,
-        questions: fallbackQuestions.map(q => ({ ...q, options: Array.isArray(q.options) ? shuffleArray(q.options) : q.options })),
-      });
+      
+      extractedMaterial = {
+        batchTitle: bookTitle || "English Textbook Scan",
+        extractedSummary: "Fallback extracted material for test",
+        vocab: [
+          { en: "schoolbag", de: "Schultasche", example: "This is my schoolbag.", category: "Schule", kind: "noun", emoji: "🎒", numberValue: null, colorHex: null, exampleDe: "Das ist meine Schultasche." },
+          { en: "ruler", de: "Lineal", example: "I need a ruler.", category: "Schule", kind: "noun", emoji: "📏", numberValue: null, colorHex: null, exampleDe: "Ich brauche ein Lineal." },
+          { en: "twelve", de: "zwölf", example: "I am twelve years old.", category: "Zahlen", kind: "number", numberValue: 12, emoji: null, colorHex: null, exampleDe: "Ich bin zwölf Jahre alt." }
+        ],
+        dialogues: []
+      };
     }
 
-    // Clean up parsed output from AI (OpenRouter or Gemini)
-    const detectedSubject = effectiveSubject || parsedResult.detectedSubject || "languages";
-    const batchTitleFinal = parsedResult.batchTitle || bookTitle || (isGerman
-      ? `Schulbuch-Scan (${new Date().toLocaleDateString('de-DE')})`
-      : `Book Scan (${new Date().toLocaleDateString()})`);
-
-    const cleanedQuestions = (parsedResult.questions || []).map((q: any, idx: number) => ({
+    // Generate the massive pool of exercises deterministically
+    const generated = generateExercisesFromMaterial(extractedMaterial, {
+      schoolGrade: targetSchoolGrade
+    });
+    
+    // Apply batch properties
+    const allExercises = generated.map((q, idx) => ({
       ...q,
-      id: q.id || `scan-q-${batchId}-${idx + 1}`,
-      subject: effectiveSubject || q.subject || detectedSubject,
-      topic: q.topic || parsedResult.detectedTopic || "basic_vocab",
-      gradeLevel: q.gradeLevel || detectedGradeLevel,
-      schoolGrade: Number(q.schoolGrade) || Number(targetSchoolGrade) || 3,
-      difficulty: Number(q.difficulty) || Math.min(5, Math.max(1, Math.ceil(Number(targetSchoolGrade) / 2))),
-      options: Array.isArray(q.options) ? shuffleArray(q.options) : q.options,
-      xp: q.xp || 30 + (Number(q.difficulty) || 2) * 5,
-      coins: q.coins || 12 + (Number(q.difficulty) || 2) * 3,
-      source: "schoolbook_scan",
+      id: `scan-q-${batchId}-${idx + 1}`,
       scanBatchId: batchId,
-      scanBatchTitle: batchTitleFinal,
+      scanBatchTitle: extractedMaterial?.batchTitle || bookTitle || 'Scan',
+      gradeLevel: detectedGradeLevel,
       assignedKidId,
+      difficulty: q.difficulty || 2,
     }));
-
+    
+    // Sample a balanced subset for the primary "Test", returning others in the pool if requested
+    const finalQuestions = sampleBalancedTest(allExercises, 30);
+    
     res.json({
       batchId,
-      batchTitle: batchTitleFinal,
-      detectedSubject,
-      detectedTopic: parsedResult.detectedTopic || "basic_vocab",
-      schoolGrade: Number(parsedResult.schoolGrade) || Number(targetSchoolGrade) || 3,
+      batchTitle: extractedMaterial.batchTitle || bookTitle || `Book Scan (${new Date().toLocaleDateString()})`,
+      detectedSubject: effectiveSubject,
+      detectedTopic: "basic_vocab",
+      schoolGrade: Number(targetSchoolGrade) || 3,
       gradeLevel: detectedGradeLevel,
       assignedKidId,
       aiModelUsed: usedModel,
       aiProviderUsed: usedProvider,
-      extractedSummary: parsedResult.extractedSummary || (isGerman
-        ? `Inhalte aus Schulbuch erfolgreich erfasst (${cleanedQuestions.length} Aufgaben generiert).`
-        : `Textbook content extracted successfully (${cleanedQuestions.length} questions).`),
-      questions: cleanedQuestions,
+      extractedSummary: extractedMaterial.extractedSummary || `Successfully generated ${finalQuestions.length} practice exercises.`,
+      questions: finalQuestions,
+      poolSize: allExercises.length,
+      allExercises: allExercises, 
     });
+
   } catch (error: any) {
     console.error("Schoolbook scan error:", error);
     res.status(500).json({

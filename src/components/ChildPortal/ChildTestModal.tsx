@@ -16,6 +16,8 @@ import confetti from 'canvas-confetti';
 import { ChildTest, KidProfile, ProblemItem, TestSubmission } from '../../types';
 import { recordTestSubmission, addXPAndCoins, DEFAULT_PARENT_CONFIG } from '../../utils/storage';
 import { soundFx } from '../../utils/audio';
+import { isInteractiveExercise, isAnswerCorrect } from '../../utils/exerciseAnswers';
+import { InteractiveExerciseRenderer } from '../MathGame/InteractiveExerciseRenderer';
 import { speakWord } from '../../utils/subjectEngines';
 
 interface ChildTestModalProps {
@@ -93,7 +95,7 @@ export const ChildTestModal: React.FC<ChildTestModalProps> = ({
 
     const answerDetails = questions.map((q) => {
       const selected = userAnswers[q.id];
-      const isCorrect = String(selected).trim().toLowerCase() === String(q.correctAnswer).trim().toLowerCase();
+      const isCorrect = isAnswerCorrect(q, selected);
       if (isCorrect) correctCount++;
       return {
         questionId: q.id,
@@ -261,7 +263,30 @@ export const ChildTestModal: React.FC<ChildTestModalProps> = ({
                   )}
                 </div>
 
-                {/* Options */}
+                {/* Interactive Renderer or Options Grid */}
+                {isInteractiveExercise(currentQuestion) ? (
+                  <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800">
+                    <InteractiveExerciseRenderer
+                      problem={currentQuestion}
+                      skin={{
+                        primaryButtonGradient: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                        primaryButtonGlow: 'rgba(99, 102, 241, 0.4)',
+                        modeCardBg: '#0f172a',
+                        modeCardBorder: '#1e293b',
+                        cardBorder: '#334155',
+                        textAccent: '#e2e8f0',
+                      } as any}
+                      onAnswerSubmit={handleSelectOption}
+                      disabled={false}
+                    />
+                    {userAnswers[currentQuestion.id] && (
+                       <div className="mt-4 flex items-center justify-center gap-2 text-cyan-400 font-bold text-sm bg-cyan-950/40 p-3 rounded-xl border border-cyan-800">
+                         <CheckCircle2 className="w-5 h-5" />
+                         Antwort gespeichert
+                       </div>
+                    )}
+                  </div>
+                ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {currentQuestion.options.map((opt, oIdx) => {
                     const isSelected = userAnswers[currentQuestion.id] === opt;
@@ -282,6 +307,7 @@ export const ChildTestModal: React.FC<ChildTestModalProps> = ({
                     );
                   })}
                 </div>
+                )}
               </div>
             ) : null}
           </div>
