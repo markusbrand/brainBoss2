@@ -793,7 +793,7 @@ export const QuestionManagerTab: React.FC = () => {
             const diffInfo = getDifficultyLabel(item.difficulty || 2);
             return (
               <div
-                key={item.id || index}
+                key={`${item.id || 'q'}-${index}`}
                 className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
                   isCustom
                     ? 'bg-slate-900/90 border-indigo-500/40 hover:border-indigo-400'

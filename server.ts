@@ -795,7 +795,7 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
       batchId,
       batchTitle: extractedMaterial.batchTitle || bookTitle || `Book Scan (${new Date().toLocaleDateString()})`,
       detectedSubject: effectiveSubject,
-      detectedTopic: "basic_vocab",
+      detectedTopic: focusTopic || (bookTitle ? bookTitle.trim() : null) || (sampleExample === 1 ? "More Words & Phrases" : sampleExample === 2 ? "English Book Unit 1" : "basic_vocab"),
       schoolGrade: Number(targetSchoolGrade) || 3,
       gradeLevel: detectedGradeLevel,
       assignedKidId,

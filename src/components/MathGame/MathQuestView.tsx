@@ -284,13 +284,44 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
       ? artTopics
       : languageTopics;
 
-  // Insert custom focus topics right after the 'all' topic!
+  // Insert custom focus topics right after the 'all' topic and strictly deduplicate by id!
   const currentTopicList = useMemo(() => {
     const safeBase = (baseTopicList || []).filter((t) => Boolean(t && t.id && t.name));
     const safeCustom = (customFocusTopics || []).filter((t) => Boolean(t && t.id && t.name));
     const allTopic = safeBase.find((t) => t.id === 'all') || { id: 'all', name: t.topics.all, icon: '🌟' };
     const otherTopics = safeBase.filter((t) => t.id !== 'all');
-    return [allTopic, ...safeCustom, ...otherTopics].filter((item) => Boolean(item && item.id && item.name));
+
+    const result: typeof safeBase = [allTopic];
+    const seenIds = new Set<string>(['all']);
+
+    // 1. Add custom topics first (right after 'all')
+    for (const customItem of safeCustom) {
+      if (!seenIds.has(customItem.id)) {
+        seenIds.add(customItem.id);
+        // If this custom topic matches a base topic id, enrich it with the localized base name/icon if needed
+        const baseMatch = otherTopics.find((b) => b.id === customItem.id);
+        if (baseMatch && customItem.name === customItem.id) {
+          result.push({
+            ...baseMatch,
+            ...customItem,
+            name: baseMatch.name,
+            icon: baseMatch.icon || customItem.icon,
+          });
+        } else {
+          result.push(customItem);
+        }
+      }
+    }
+
+    // 2. Add remaining base topics that haven't been added yet
+    for (const baseItem of otherTopics) {
+      if (!seenIds.has(baseItem.id)) {
+        seenIds.add(baseItem.id);
+        result.push(baseItem);
+      }
+    }
+
+    return result.filter((item) => Boolean(item && item.id && item.name));
   }, [baseTopicList, customFocusTopics, t.topics.all]);
 
   // Check if an official test is available for the currently selected topic or active subject
@@ -635,7 +666,7 @@ export const MathQuestView: React.FC<MathQuestViewProps> = ({
 
                       return (
                         <button
-                          key={item.id}
+                          key={`topic-chip-${item.id}`}
                           id={`topic-chip-${item.id}`}
                           onClick={() => handleTopicChange(item.id)}
                           style={

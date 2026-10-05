@@ -506,8 +506,8 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
         throw new Error('Keine Aufgaben generiert.');
       }
 
-      const finalTitle = data.batchTitle || (sampleNum === 1 ? 'More Words and Phrases - Unit 1' : 'English Textbook Unit 1');
-      const finalTopic = data.detectedTopic || (sampleNum === 1 ? 'More Words & Phrases' : 'English Book Unit 1');
+      const finalTitle = (sampleNum === 1 ? 'More Words and Phrases - Unit 1' : 'English Textbook Unit 1') || data.batchTitle;
+      const finalTopic = (sampleNum === 1 ? 'More Words & Phrases' : 'English Book Unit 1') || data.detectedTopic || 'English Book Unit 1';
 
       const formattedQuestions: CustomQuestion[] = extractedQuestions.map((q, idx) => ({
         ...q,
@@ -1637,7 +1637,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
 
                                   return (
                                     <div
-                                      key={q.id || qIdx}
+                                      key={`${q.id || 'q'}-${qIdx}`}
                                       className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2 hover:border-slate-700 transition-colors"
                                     >
                                       <div className="flex items-center justify-between text-[11px] gap-2">
