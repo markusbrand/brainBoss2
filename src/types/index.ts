@@ -165,6 +165,20 @@ export interface ProblemItem {
   visual?: VisualProblemData;
   exerciseType?: ExerciseType;
   exerciseData?: ExerciseData;
+  questionType?: string;
+  puzzleData?: {
+    scrambledLetters?: string[];
+    targetWord?: string;
+    blankSentence?: string;
+    missingLettersPrompt?: string;
+    dialogueSpeaker?: string;
+  };
+  vocabularyItem?: {
+    term: string;
+    translation: string;
+    exampleSentence?: string;
+    category?: string;
+  };
   options: (number | string)[];
   correctAnswer: number | string;
   explanation: string;
@@ -330,6 +344,13 @@ export interface ScannedMaterialBatch {
   pagesCount?: number;
   questionCount: number;
   extractedQuestionsCount?: number;
+  extractedVocabularyCount?: number;
+  extractedVocabulary?: Array<{
+    term: string;
+    translation: string;
+    exampleSentence?: string;
+    category?: string;
+  }>;
   extractedSummary?: string;
   aiSummary?: string;
   sourceBookOrChapter?: string;

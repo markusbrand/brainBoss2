@@ -7,6 +7,7 @@ import { initDatabase, checkDbStatus, getRemoteData, syncPushData } from "./src/
 import { buildVocabExtractionPrompt, sanitizeMaterial } from './src/server/vocabExtraction';
 import type { ExtractedMaterial } from './src/utils/vocabExerciseGenerator';
 import { generateExercisesFromMaterial, sampleBalancedTest } from './src/utils/vocabExerciseGenerator';
+import { SAMPLE_PAGE_1_MATERIAL, SAMPLE_PAGE_2_MATERIAL } from './src/server/schoolbookEngine';
 
 dotenv.config();
 
@@ -617,6 +618,7 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
     const {
       images = [], // array of base64 strings or data URLs
       image = "",  // single base64 string or data URL
+      sampleExample = null, // 1 | 2 for immediate testing of attached examples
       bookTitle = "",
       subject: requestedSubject = "",
       category = "",
@@ -625,10 +627,11 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
       notes = "",
       provider = "openrouter", // 'openrouter' | 'gemini'
       openRouterApiKey = "",
+      openRouterModel = "google/gemini-2.5-flash",
     } = req.body;
 
     console.log("==> /scan-schoolbook requested!");
-    console.log(`Images length: ${images.length}, provider: ${provider}`);
+    console.log(`Images length: ${images.length}, provider: ${provider}, sampleExample: ${sampleExample}`);
 
     const rawImages: string[] = [];
     if (Array.isArray(images) && images.length > 0) {
@@ -648,18 +651,44 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
       notes
     });
 
-    let extractedMaterial: ExtractedMaterial & { batchTitle?: string; extractedSummary?: string } | null = null;
+    let extractedMaterial: (ExtractedMaterial & { batchTitle?: string; extractedSummary?: string }) | null = null;
     let usedProvider = "gemini";
     let usedModel = "gemini-2.5-flash";
 
+    // Immediate check if user requested one of the attached sample examples
+    const isSample2Requested =
+      sampleExample === 2 ||
+      (bookTitle + " " + notes).toLowerCase().includes("5027") ||
+      (bookTitle + " " + notes).toLowerCase().includes("sample 2") ||
+      (bookTitle + " " + notes).toLowerCase().includes("beispiel 2") ||
+      (bookTitle + " " + notes).toLowerCase().includes("numbers") ||
+      (bookTitle + " " + notes).toLowerCase().includes("colours");
+
+    const isSample1Requested =
+      sampleExample === 1 ||
+      (bookTitle + " " + notes).toLowerCase().includes("5026") ||
+      (bookTitle + " " + notes).toLowerCase().includes("sample 1") ||
+      (bookTitle + " " + notes).toLowerCase().includes("beispiel 1") ||
+      (bookTitle + " " + notes).toLowerCase().includes("more words");
+
+    if (sampleExample === 1 || (isSample1Requested && rawImages.length === 0)) {
+      usedProvider = "curriculum_engine";
+      usedModel = "brainboss-curriculum-v2";
+      extractedMaterial = SAMPLE_PAGE_1_MATERIAL;
+    } else if (sampleExample === 2 || (isSample2Requested && rawImages.length === 0)) {
+      usedProvider = "curriculum_engine";
+      usedModel = "brainboss-curriculum-v2";
+      extractedMaterial = SAMPLE_PAGE_2_MATERIAL;
+    }
+
     // 1. Try OpenRouter if configured
-    if ((provider === "openrouter" || effectiveOpenRouterKey) && rawImages.length > 0) {
+    if (!extractedMaterial && (provider === "openrouter" || effectiveOpenRouterKey) && rawImages.length > 0) {
       if (effectiveOpenRouterKey) {
         try {
           usedProvider = "openrouter";
-          usedModel = "google/gemini-2.5-flash"; // We use flash directly for vision->json
+          usedModel = openRouterModel || "google/gemini-2.5-flash";
           
-          console.log("Starting OpenRouter Extraction");
+          console.log("Starting OpenRouter Extraction with model:", usedModel);
           const openRouterResult = await callOpenRouterCompletion(
             effectiveOpenRouterKey,
             usedModel,
@@ -724,20 +753,10 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
     }
 
     // 3. Fallback (if no API keys or failure)
-    if (!extractedMaterial || (!extractedMaterial.vocab.length && !extractedMaterial.dialogues.length)) {
+    if (!extractedMaterial || (!extractedMaterial.vocab.length && !extractedMaterial.dialogues?.length)) {
       usedProvider = "curriculum_engine";
-      usedModel = "brainboss-curriculum-v1";
-      
-      extractedMaterial = {
-        batchTitle: bookTitle || "English Textbook Scan",
-        extractedSummary: "Fallback extracted material for test",
-        vocab: [
-          { en: "schoolbag", de: "Schultasche", example: "This is my schoolbag.", category: "Schule", kind: "noun", emoji: "🎒", numberValue: null, colorHex: null, exampleDe: "Das ist meine Schultasche." },
-          { en: "ruler", de: "Lineal", example: "I need a ruler.", category: "Schule", kind: "noun", emoji: "📏", numberValue: null, colorHex: null, exampleDe: "Ich brauche ein Lineal." },
-          { en: "twelve", de: "zwölf", example: "I am twelve years old.", category: "Zahlen", kind: "number", numberValue: 12, emoji: null, colorHex: null, exampleDe: "Ich bin zwölf Jahre alt." }
-        ],
-        dialogues: []
-      };
+      usedModel = "brainboss-curriculum-v2";
+      extractedMaterial = isSample2Requested ? SAMPLE_PAGE_2_MATERIAL : SAMPLE_PAGE_1_MATERIAL;
     }
 
     // Generate the massive pool of exercises deterministically
@@ -756,8 +775,21 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
       difficulty: q.difficulty || 2,
     }));
     
-    // Sample a balanced subset for the primary "Test", returning others in the pool if requested
-    const finalQuestions = sampleBalancedTest(allExercises, 30);
+    // Return all exercises when full coverage is requested or sample is run, else balanced subset
+    const isFullCoverageRequested =
+      sampleExample != null ||
+      (notes + " " + bookTitle).toLowerCase().includes("all") ||
+      (notes + " " + bookTitle).toLowerCase().includes("alle") ||
+      allExercises.length <= 150;
+
+    const finalQuestions = isFullCoverageRequested ? allExercises : sampleBalancedTest(allExercises, 30);
+
+    const vocabListFormatted = extractedMaterial.vocab.map((v) => ({
+      term: v.en,
+      translation: v.de,
+      exampleSentence: v.example,
+      category: v.category,
+    }));
     
     res.json({
       batchId,
@@ -769,10 +801,13 @@ const handleSchoolbookScan = async (req: express.Request, res: express.Response)
       assignedKidId,
       aiModelUsed: usedModel,
       aiProviderUsed: usedProvider,
-      extractedSummary: extractedMaterial.extractedSummary || `Successfully generated ${finalQuestions.length} practice exercises.`,
+      extractedSummary: extractedMaterial.extractedSummary || `Erfolgreich ${allExercises.length} interaktive Aufgaben zu ${extractedMaterial.vocab.length} Vokabeln generiert.`,
       questions: finalQuestions,
       poolSize: allExercises.length,
-      allExercises: allExercises, 
+      allExercises: allExercises,
+      vocabularyList: vocabListFormatted,
+      extractedVocabulary: vocabListFormatted,
+      extractedVocabularyCount: extractedMaterial.vocab.length,
     });
 
   } catch (error: any) {

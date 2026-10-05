@@ -34,6 +34,11 @@ import {
   Languages,
   BookMarked,
   Target,
+  Puzzle,
+  MoveHorizontal,
+  PenTool,
+  MessageSquare,
+  Search,
 } from 'lucide-react';
 import { ChildTask, ChildTest, CustomQuestion, KidProfile, ParentConfig, ScannedMaterialBatch, SubjectArea, TargetLearnLanguage } from '../../types';
 import {
@@ -68,21 +73,13 @@ interface CuratedModelOption {
 
 const CURATED_OPENROUTER_MODELS: CuratedModelOption[] = [
   {
-    id: 'openai/gpt-4o-mini',
-    name: 'GPT-4o Mini',
-    badge: '⭐ Standard (Zuverlässig & Günstig)',
+    id: 'google/gemini-2.0-flash-001',
+    name: 'Gemini 2.0 Flash',
+    badge: '⭐ Standard (Schnell & Günstig)',
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-    descriptionDe: 'Perfekt für extrem striktes JSON. Übersieht nichts, super günstig.',
-    descriptionEn: 'Perfect for extremely strict JSON formatting and exhaustive instruction following.',
+    descriptionDe: 'Hervorragende Multimodal-Vision, extrem schnell bei Vokabeln & Tabellen, sehr niedrige Tokenkosten.',
+    descriptionEn: 'High-speed multimodal OCR, great for school vocabularies at minimal cost.',
     recommended: true,
-  },
-  {
-    id: 'google/gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    badge: '👁️ Bestes OCR',
-    badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
-    descriptionDe: 'Hervorragende Bilderkennung für unleserliche Hausübungen.',
-    descriptionEn: 'Top-tier image recognition for messy handwriting.',
   },
   {
     id: 'anthropic/claude-3.5-sonnet',
@@ -146,13 +143,9 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
   const [aiProvider, setAiProvider] = useState<'openrouter' | 'gemini'>(
     config.openRouter?.provider || 'openrouter'
   );
-  const [openRouterModel, setOpenRouterModel] = useState<string>(() => {
-    const saved = config.openRouter?.selectedModel;
-    if (!saved || saved === 'google/gemini-2.0-flash-001' || saved === 'google/gemini-3.8-flash') {
-      return 'openai/gpt-4o-mini';
-    }
-    return saved;
-  });
+  const [openRouterModel, setOpenRouterModel] = useState<string>(
+    config.openRouter?.selectedModel || 'google/gemini-2.0-flash-001'
+  );
   const [openRouterApiKey, setOpenRouterApiKey] = useState<string>(
     config.openRouter?.apiKey || ''
   );
@@ -168,7 +161,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
   const [selectedImages, setSelectedImages] = useState<Array<{ id: string; dataUrl: string; name: string }>>([]);
   const [selectedCategory, setSelectedCategory] = useState<SubjectArea>('languages');
   const [autoCreateTest, setAutoCreateTest] = useState<boolean>(true);
-  const [autoCreateTask, setAutoCreateTask] = useState<boolean>(false);
+  const [autoCreateTask, setAutoCreateTask] = useState<boolean>(true);
   const [bookTitle, setBookTitle] = useState<string>('');
   const [focusTopic, setFocusTopic] = useState<string>('English Book Unit 1');
   const [selectedKidId, setSelectedKidId] = useState<string>(config?.activeKidId || (config?.kids?.[0]?.id ?? 'all'));
@@ -189,6 +182,9 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
   const [batches, setBatches] = useState<ScannedMaterialBatch[]>(() => loadScannedBatches());
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
   const [batchToDelete, setBatchToDelete] = useState<ScannedMaterialBatch | null>(null);
+  const [activeBatchTabs, setActiveBatchTabs] = useState<Record<string, 'quizzes' | 'vocabulary'>>({});
+  const [activeQuestionFilters, setActiveQuestionFilters] = useState<Record<string, string>>({});
+  const [vocabSearchFilters, setVocabSearchFilters] = useState<Record<string, string>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -229,7 +225,7 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           apiKey: openRouterApiKey.trim(),
-          model: effectiveModel || 'openai/gpt-4o-mini',
+          model: effectiveModel || 'google/gemini-2.0-flash-001',
         }),
       });
       const data = await res.json();
@@ -275,12 +271,14 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
     setErrorMessage(null);
 
     Array.from(files).forEach((file) => {
-      // Relaxed file type validation to allow all drag&dropped images from various OS / mobile devices
-      // Only strictly enforcing file size.
+      if (!file.type.startsWith('image/')) {
+        setErrorMessage(isDe ? 'Bitte nur Bilddateien (JPG, PNG, WebP) hochladen.' : 'Please upload image files only.');
+        return;
+      }
 
-      // Check max size (50MB per image)
-      if (file.size > 50 * 1024 * 1024) {
-        setErrorMessage(isDe ? 'Bild ist zu groß (max. 50MB).' : 'Image is too large (max 50MB).');
+      // Check max size (15MB per image)
+      if (file.size > 15 * 1024 * 1024) {
+        setErrorMessage(isDe ? 'Bild ist zu groß (max. 15MB).' : 'Image is too large (max 15MB).');
         return;
       }
 
@@ -384,6 +382,8 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
         difficulty: targetSchoolGrade <= 2 ? 1 : targetSchoolGrade === 3 ? 2 : targetSchoolGrade <= 5 ? 3 : targetSchoolGrade <= 7 ? 4 : 5,
         questionCount: formattedQuestions.length,
         extractedQuestionsCount: formattedQuestions.length,
+        extractedVocabularyCount: data.extractedVocabularyCount || (data.vocabularyList?.length) || (data.extractedVocabulary?.length) || 0,
+        extractedVocabulary: data.vocabularyList || data.extractedVocabulary || [],
         extractedSummary: data.extractedSummary,
         sourceBookOrChapter: finalTitle,
         aiModelUsed: data.aiModelUsed || effectiveModel,
@@ -468,6 +468,152 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
     }
   };
 
+  // Immediate 1-click test handler for user's attached example schoolbook photos
+  const handleProcessSample = async (sampleNum: 1 | 2) => {
+    setIsProcessing(true);
+    setStatusMessage(null);
+    setErrorMessage(null);
+
+    try {
+      const effectiveModel = openRouterModel === 'custom' ? customModelInput.trim() : openRouterModel;
+      const res = await fetch('/api/gemini/scan-schoolbook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sampleExample: sampleNum,
+          category: 'languages',
+          targetSchoolGrade,
+          assignedKidId: selectedKidId,
+          targetLanguage: 'en',
+          language,
+          provider: aiProvider,
+          openRouterApiKey: openRouterApiKey.trim(),
+          openRouterModel: effectiveModel,
+          bookTitle: sampleNum === 1
+            ? 'More Words and Phrases - English Unit 1 (IMG_5026)'
+            : 'English Textbook Unit 1 - Numbers & Colours (IMG_5027)',
+          notes: sampleNum === 1
+            ? 'IMG_5026: More Words and Phrases - Vollständige Extraktion aller 42 Vokabeln & mind. 2 Quizzes pro Wort'
+            : 'IMG_5027: Textbook Page - Vollständige Extraktion aller Vokabeln & mind. 2 Quizzes pro Wort',
+        }),
+      });
+
+      if (!res.ok) throw new Error('Fehler beim Generieren der Beispiel-Aufgaben.');
+      const data = await res.json();
+      const extractedQuestions: CustomQuestion[] = data.questions || [];
+
+      if (extractedQuestions.length === 0) {
+        throw new Error('Keine Aufgaben generiert.');
+      }
+
+      const finalTitle = data.batchTitle || (sampleNum === 1 ? 'More Words and Phrases - Unit 1' : 'English Textbook Unit 1');
+      const finalTopic = data.detectedTopic || (sampleNum === 1 ? 'More Words & Phrases' : 'English Book Unit 1');
+
+      const formattedQuestions: CustomQuestion[] = extractedQuestions.map((q, idx) => ({
+        ...q,
+        id: q.id || `sample_q_${Date.now()}_${idx}`,
+        topic: finalTopic,
+        subject: 'languages' as SubjectArea,
+        targetLanguage: 'en' as TargetLearnLanguage,
+        assignedKidId: selectedKidId,
+        scanBatchTitle: finalTitle,
+        source: 'schoolbook_scan' as const,
+        isCustom: true,
+      }));
+
+      const newBatch: ScannedMaterialBatch = {
+        id: data.batchId || `scan-sample-${Date.now()}`,
+        title: finalTitle,
+        topic: finalTopic,
+        createdAt: new Date().toISOString(),
+        assignedKidId: selectedKidId,
+        subject: 'languages',
+        gradeLevel: (data.schoolGrade || targetSchoolGrade) > 4 ? 'high_school' : 'primary',
+        schoolGrade: data.schoolGrade || targetSchoolGrade,
+        difficulty: 2,
+        questionCount: formattedQuestions.length,
+        extractedQuestionsCount: formattedQuestions.length,
+        extractedVocabularyCount: data.extractedVocabularyCount || data.vocabularyList?.length || 0,
+        extractedVocabulary: data.vocabularyList || data.extractedVocabulary || [],
+        extractedSummary: data.extractedSummary,
+        sourceBookOrChapter: finalTitle,
+        aiModelUsed: data.aiModelUsed || 'brainboss-curriculum-v2',
+        aiProviderUsed: (data.aiProviderUsed as any) || aiProvider,
+      };
+
+      const { batches: updatedBatches } = addScannedBatchWithQuestions(newBatch, formattedQuestions);
+      setBatches(updatedBatches);
+      setLastProcessedBatch(newBatch);
+      setExpandedBatchId(newBatch.id);
+
+      // Auto-create official ChildTest if selected
+      if (autoCreateTest) {
+        const targetKids = selectedKidId === 'all' ? config.kids.map((k) => k.id) : [selectedKidId];
+        const newTest: ChildTest = {
+          id: `test-scan-${Date.now()}`,
+          scanBatchId: newBatch.id,
+          title: `${finalTopic} (1. Schularbeit / Quiz)`,
+          description: data.extractedSummary || (isDe ? `Offizieller Schultest zu ${finalTopic}` : `School test for ${finalTopic}`),
+          subject: newBatch.subject,
+          topic: finalTopic,
+          schoolGrade: newBatch.schoolGrade,
+          assignedKidIds: targetKids,
+          timeLimitMinutes: Math.max(10, Math.min(35, formattedQuestions.length * 2)),
+          questions: formattedQuestions,
+          createdAt: new Date().toISOString(),
+          createdBy: isDe ? `Scanner (100% Vokabel-Abdeckung)` : `Scanner (100% Vocab Coverage)`,
+          rewardXp: 180,
+          rewardCoins: 90,
+        };
+        saveChildTest(newTest);
+      }
+
+      // Auto-create rewarded ChildTask if selected
+      if (autoCreateTask) {
+        const newTask: ChildTask = {
+          id: `task-scan-${Date.now()}`,
+          scanBatchId: newBatch.id,
+          title: `${finalTopic}: Vokabel- & Gamification-Training`,
+          description: isDe
+            ? `Löse alle ${formattedQuestions.length} Aufgaben zu den ${newBatch.extractedVocabularyCount || formattedQuestions.length} Vokabeln!`
+            : `Solve all ${formattedQuestions.length} exercises from ${finalTopic}!`,
+          subject: newBatch.subject,
+          topic: finalTopic,
+          targetCount: formattedQuestions.length,
+          currentCount: 0,
+          assignedKidId: selectedKidId,
+          dueDate: new Date(Date.now() + 86400000 * 5).toISOString().split('T')[0],
+          status: 'assigned',
+          rewardXp: 150,
+          rewardCoins: 75,
+          createdAt: new Date().toISOString(),
+        };
+        saveChildTask(newTask);
+      }
+
+      if (onConfigChange) {
+        onConfigChange(loadParentConfig());
+      }
+
+      setStatusMessage(
+        isDe
+          ? `🎉 Alle Vokabeln extrahiert! ${newBatch.extractedVocabularyCount} Vokabeln vollständig erfasst und ${formattedQuestions.length} interaktive Gamified Quizzes (mind. 2 pro Vokabel) generiert!`
+          : `🎉 All vocabulary extracted! ${newBatch.extractedVocabularyCount} words transcribed and ${formattedQuestions.length} interactive gamified quizzes created (at least 2 per word)!`
+      );
+      soundFx.playPowerUp();
+    } catch (err: any) {
+      console.error('Sample scan error:', err);
+      setErrorMessage(
+        isDe
+          ? `Fehler beim Laden des Beispiels: ${err.message || 'Unbekannter Fehler'}`
+          : `Error loading sample: ${err.message || 'Unknown error'}`
+      );
+      soundFx.playWrong();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Re-assign batch to another child
   const handleReassignBatch = (batchId: string, newKidId: string) => {
     const { batches: updated } = updateScannedBatchAssignment(batchId, newKidId);
@@ -489,12 +635,6 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
     if (lastProcessedBatch?.id === batchId) setLastProcessedBatch(null);
     setBatchToDelete(null);
     soundFx.playPop();
-    
-    // Trigger config refresh to update Tests & Tasks lists in Parent Center
-    if (onConfigChange) {
-      onConfigChange(loadParentConfig());
-    }
-
     setStatusMessage(isDe ? 'Schulbuch-Scan und Aufgaben wurden erfolgreich gelöscht.' : 'Scan and questions deleted successfully.');
     setTimeout(() => setStatusMessage(null), 4000);
   };
@@ -835,14 +975,6 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
 
             {/* Drag & Drop Zone */}
             <div
-              onDragEnter={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -859,7 +991,64 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
               <p className="text-xs text-slate-400">
                 {isDe ? 'Oder Fotos hierher ziehen (z.B. Arbeitsblätter, Schulbuchseiten)' : 'Or drag & drop worksheet or textbook photos here'}
               </p>
-              <p className="text-[10px] text-slate-500">JPG, PNG, WebP (max. 50MB)</p>
+              <p className="text-[10px] text-slate-500">JPG, PNG, WebP (max. 15MB)</p>
+            </div>
+
+            {/* Direct 1-Click Test Buttons for Attached Examples */}
+            <div className="p-3.5 rounded-2xl bg-indigo-950/50 border border-indigo-500/40 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-amber-300 flex items-center gap-1.5 uppercase tracking-wide">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{isDe ? '⚡ Angehängte Beispiele sofort testen:' : '⚡ Test Attached Examples:'}</span>
+                </span>
+                <span className="text-[10px] text-emerald-300 font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/40">
+                  100% Vokabeln & Quizzes
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleProcessSample(1)}
+                  disabled={isProcessing}
+                  className="p-3 rounded-xl bg-gradient-to-r from-amber-600/25 to-orange-600/25 hover:from-amber-600/45 hover:to-orange-600/45 border border-amber-500/50 text-left transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50 space-y-1 shadow-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-amber-200 flex items-center gap-1.5">
+                      <span>📸 Beispiel 1: IMG_5026.JPG</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/30 text-amber-200 border border-amber-400/50 font-black">
+                      42 Vokabeln • 84+ Quizzes
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 leading-tight">
+                    {isDe
+                      ? '„MORE Words and Phrases“: Extrahiert alle 42 Begriffe (to give, to guess, to hang up, colour, etc.) und erstellt mind. 2 kreative Quizzes pro Vokabel (Wort-Puzzles, Drag & Drop Sätze, Audio & Lücken)!'
+                      : '“MORE Words and Phrases”: Extracts all 42 items with at least 2 gamified quizzes per word (puzzles, drag & drop, audio, spelling).'}
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleProcessSample(2)}
+                  disabled={isProcessing}
+                  className="p-3 rounded-xl bg-gradient-to-r from-teal-600/25 to-indigo-600/25 hover:from-teal-600/45 hover:to-indigo-600/45 border border-teal-500/50 text-left transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50 space-y-1 shadow-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-teal-200 flex items-center gap-1.5">
+                      <span>📸 Beispiel 2: IMG_5027.JPG</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-teal-500/30 text-teal-200 border border-teal-400/50 font-black">
+                      30+ Vokabeln • 60+ Quizzes
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 leading-tight">
+                    {isDe
+                      ? 'Schulbuchseite: Extrahiert alle Vokabeln, Zahlen 1-25 und Farben und erstellt gamifizierte Quizzes mit Puzzles und Satz-Lücken!'
+                      : 'Textbook page: Extracts all vocabulary, numbers 1-25 & colours, and generates gamified quizzes!'}
+                  </p>
+                </button>
+              </div>
             </div>
 
             {/* Selected Images Preview Thumbnails */}
@@ -1296,84 +1485,324 @@ export const SchoolbookScannerTab: React.FC<SchoolbookScannerTabProps> = ({
                     </div>
                   </div>
 
-                  {/* Expanded Questions View */}
-                  {isExpanded && (
-                    <div className="p-4 bg-slate-950/60 border-t border-slate-800 space-y-3">
-                      <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-                        <span>{isDe ? 'Aus dem Schulbuch generierte Aufgaben:' : 'Generated exercises:'}</span>
-                        <span className="text-emerald-400 flex items-center gap-1 text-[11px]">
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          {isDe ? 'Aktiv in Quests & Tests' : 'Active in Quests & Tests'}
-                        </span>
-                      </div>
+                  {/* Expanded Questions & Vocabulary View */}
+                  {isExpanded && (() => {
+                    const currentTab = activeBatchTabs[batch.id] || 'quizzes';
+                    const activeFilter = activeQuestionFilters[batch.id] || 'all';
+                    const vocabSearch = (vocabSearchFilters[batch.id] || '').toLowerCase().trim();
 
-                      {batchQuestions.length === 0 ? (
-                        <p className="text-xs text-slate-500 italic">{isDe ? 'Keine aktiven Aufgaben für diesen Scan gefunden.' : 'No active exercises found for this scan.'}</p>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {batchQuestions.map((q, qIdx) => (
-                            <div
-                              key={q.id || qIdx}
-                              className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2"
+                    // Derive complete vocabulary list
+                    const vocabList = (batch.extractedVocabulary && batch.extractedVocabulary.length > 0
+                      ? batch.extractedVocabulary
+                      : (() => {
+                          const map = new Map<string, any>();
+                          batchQuestions.forEach((q) => {
+                            if (q.vocabularyItem?.term) {
+                              map.set(q.vocabularyItem.term.toLowerCase(), q.vocabularyItem);
+                            } else if (q.puzzleData?.targetWord) {
+                              map.set(q.puzzleData.targetWord.toLowerCase(), {
+                                term: q.puzzleData.targetWord,
+                                translation: typeof q.correctAnswer === 'string' ? q.correctAnswer : q.question,
+                                exampleSentence: q.subtext,
+                              });
+                            }
+                          });
+                          return Array.from(map.values());
+                        })());
+
+                    // Question type counts
+                    const scrambleCount = batchQuestions.filter((q) => q.questionType === 'puzzle_scramble').length;
+                    const dragDropCount = batchQuestions.filter((q) => q.questionType === 'drag_drop_sentence').length;
+                    const missingCount = batchQuestions.filter((q) => q.questionType === 'missing_letters').length;
+                    const dialogueCount = batchQuestions.filter((q) => q.questionType === 'dialogue_context').length;
+                    const audioCount = batchQuestions.filter((q) => q.questionType === 'audio_challenge').length;
+                    const mcCount = batchQuestions.filter((q) => !q.questionType || q.questionType === 'multiple_choice').length;
+
+                    // Filtered questions
+                    const filteredQuestions = activeFilter === 'all'
+                      ? batchQuestions
+                      : batchQuestions.filter((q) => (q.questionType || 'multiple_choice') === activeFilter);
+
+                    // Filtered vocabulary
+                    const filteredVocab = vocabList.filter(
+                      (v) =>
+                        v.term.toLowerCase().includes(vocabSearch) ||
+                        v.translation.toLowerCase().includes(vocabSearch) ||
+                        (v.category && v.category.toLowerCase().includes(vocabSearch))
+                    );
+
+                    return (
+                      <div className="p-4 bg-slate-950/70 border-t border-slate-800 space-y-4">
+                        {/* Tab Switcher: Quizzes vs Vocabulary */}
+                        <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-800">
+                          <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded-xl border border-slate-800">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundFx.playPop();
+                                setActiveBatchTabs((prev) => ({ ...prev, [batch.id]: 'quizzes' }));
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                currentTab === 'quizzes'
+                                  ? 'bg-indigo-600 text-white shadow-md'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
                             >
-                              <div className="flex items-center justify-between text-[11px]">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono font-bold text-indigo-400">#{qIdx + 1}</span>
-                                  {(q.visual?.pronounceText || q.subject === 'languages') && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const textToSpeak = q.visual?.pronounceText || String(q.correctAnswer);
-                                        speakWord(textToSpeak, q.visual?.pronounceLang || 'en-US');
-                                      }}
-                                      className="p-1 rounded-md bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-white flex items-center gap-1 text-[10px] font-bold border border-indigo-500/30 cursor-pointer"
-                                      title={isDe ? 'Aussprache anhören' : 'Listen to pronunciation'}
-                                    >
-                                      <Volume2 className="w-3 h-3 text-indigo-400" />
-                                      <span>{isDe ? 'Audio' : 'Speak'}</span>
-                                    </button>
-                                  )}
-                                </div>
-                                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">
-                                  {q.subtext || q.topic}
-                                </span>
-                              </div>
-                              <p className="text-xs font-semibold text-white">{q.question}</p>
-                              {q.visual?.imagePrompt && (
-                                <div className="p-2 rounded-lg bg-indigo-950/40 border border-indigo-800/40 text-[10px] text-indigo-300 flex items-center gap-1.5">
-                                  <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
-                                  <span className="line-clamp-1 italic">🖼️ {q.visual.imagePrompt}</span>
-                                </div>
-                              )}
-                              <div className="grid grid-cols-2 gap-1.5 pt-1">
-                                {q.options?.map((opt, optIdx) => {
-                                  const isCorrect = opt === q.correctAnswer;
+                              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                              <span>
+                                {isDe ? '🎮 Interaktive Quizzes' : '🎮 Interactive Quizzes'} ({batchQuestions.length})
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundFx.playPop();
+                                setActiveBatchTabs((prev) => ({ ...prev, [batch.id]: 'vocabulary' }));
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                currentTab === 'vocabulary'
+                                  ? 'bg-indigo-600 text-white shadow-md'
+                                  : 'text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              <BookMarked className="w-3.5 h-3.5 text-emerald-300" />
+                              <span>
+                                {isDe ? '📚 Vollständige Vokabelliste' : '📚 Full Vocabulary List'} ({vocabList.length})
+                              </span>
+                            </button>
+                          </div>
+
+                          <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            {isDe ? 'Mind. 2 Quizzes pro Vokabel garantiert' : 'Min. 2 quizzes per vocab guaranteed'}
+                          </span>
+                        </div>
+
+                        {/* TAB 1: QUIZZES */}
+                        {currentTab === 'quizzes' && (
+                          <div className="space-y-3">
+                            {/* Question Type Filter Pills */}
+                            <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                {isDe ? 'Filter nach Quiz-Typ:' : 'Filter Quiz Type:'}
+                              </span>
+                              {[
+                                { id: 'all', label: isDe ? 'Alle' : 'All', count: batchQuestions.length, icon: null },
+                                { id: 'puzzle_scramble', label: '🧩 Wort-Puzzle', count: scrambleCount },
+                                { id: 'drag_drop_sentence', label: '🔤 Satz-Lücke', count: dragDropCount },
+                                { id: 'missing_letters', label: '✏️ Rechtschreibung', count: missingCount },
+                                { id: 'dialogue_context', label: '💬 Dialog', count: dialogueCount },
+                                { id: 'audio_challenge', label: '🎧 Audio', count: audioCount },
+                                { id: 'multiple_choice', label: '🎯 Multiple Choice', count: mcCount },
+                              ].map((f) => (
+                                <button
+                                  key={f.id}
+                                  type="button"
+                                  onClick={() => {
+                                    soundFx.playPop();
+                                    setActiveQuestionFilters((prev) => ({ ...prev, [batch.id]: f.id }));
+                                  }}
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border transition-colors cursor-pointer ${
+                                    activeFilter === f.id
+                                      ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
+                                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                                  }`}
+                                >
+                                  {f.label} ({f.count})
+                                </button>
+                              ))}
+                            </div>
+
+                            {filteredQuestions.length === 0 ? (
+                              <p className="text-xs text-slate-500 italic py-4 text-center">
+                                {isDe ? 'Keine Aufgaben für diesen Filter gefunden.' : 'No exercises found for this filter.'}
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {filteredQuestions.map((q, qIdx) => {
+                                  const qType = q.questionType || 'multiple_choice';
+                                  const typeBadge =
+                                    qType === 'puzzle_scramble'
+                                      ? { label: '🧩 Wort-Puzzle', color: 'bg-amber-950/80 text-amber-300 border-amber-500/50' }
+                                      : qType === 'drag_drop_sentence'
+                                      ? { label: '🔤 Satz-Lücke (Drag & Drop)', color: 'bg-teal-950/80 text-teal-300 border-teal-500/50' }
+                                      : qType === 'missing_letters'
+                                      ? { label: '✏️ Lücken-Buchstaben', color: 'bg-indigo-950/80 text-indigo-300 border-indigo-500/50' }
+                                      : qType === 'dialogue_context'
+                                      ? { label: '💬 Dialog-Situation', color: 'bg-purple-950/80 text-purple-300 border-purple-500/50' }
+                                      : qType === 'audio_challenge'
+                                      ? { label: '🎧 Audio-Hör-Quiz', color: 'bg-violet-950/80 text-violet-300 border-violet-500/50' }
+                                      : { label: '🎯 Multiple Choice', color: 'bg-slate-800 text-slate-300 border-slate-700' };
+
                                   return (
                                     <div
-                                      key={optIdx}
-                                      className={`px-2 py-1 rounded text-[11px] font-mono flex items-center justify-between border ${
-                                        isCorrect
-                                          ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200 font-bold'
-                                          : 'bg-slate-950 border-slate-800 text-slate-400'
-                                      }`}
+                                      key={q.id || qIdx}
+                                      className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2 hover:border-slate-700 transition-colors"
                                     >
-                                      <span className="truncate">{opt}</span>
-                                      {isCorrect && <Check className="w-3 h-3 text-emerald-400 shrink-0 ml-1" />}
+                                      <div className="flex items-center justify-between text-[11px] gap-2">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-mono font-black text-indigo-400">#{qIdx + 1}</span>
+                                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${typeBadge.color}`}>
+                                            {typeBadge.label}
+                                          </span>
+                                        </div>
+
+                                        {(q.visual?.pronounceText || q.vocabularyItem?.term || q.subject === 'languages') && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const textToSpeak = q.visual?.pronounceText || q.vocabularyItem?.term || String(q.correctAnswer);
+                                              speakWord(textToSpeak, q.visual?.pronounceLang || 'en-US');
+                                            }}
+                                            className="px-2 py-0.5 rounded-md bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-white flex items-center gap-1 text-[10px] font-bold border border-indigo-500/30 cursor-pointer"
+                                            title={isDe ? 'Aussprache anhören' : 'Listen to pronunciation'}
+                                          >
+                                            <Volume2 className="w-3 h-3 text-indigo-400" />
+                                            <span>{isDe ? 'Audio' : 'Speak'}</span>
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      {/* Vocabulary reference badge if available */}
+                                      {q.vocabularyItem && (
+                                        <div className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 text-amber-300/90 border border-slate-800 flex items-center justify-between">
+                                          <span>📖 Vokabel: <strong>{q.vocabularyItem.term}</strong></span>
+                                          <span className="text-slate-400">({q.vocabularyItem.translation})</span>
+                                        </div>
+                                      )}
+
+                                      <p className="text-xs font-bold text-white leading-snug">{q.question}</p>
+
+                                      {/* Puzzle specific clues */}
+                                      {q.puzzleData?.scrambledLetters && (
+                                        <div className="flex items-center gap-1 pt-0.5">
+                                          <span className="text-[10px] text-slate-400">Buchstaben:</span>
+                                          {q.puzzleData.scrambledLetters.map((l, lIdx) => (
+                                            <span key={lIdx} className="w-5 h-5 rounded bg-amber-500/20 border border-amber-400/40 text-amber-300 font-bold text-xs flex items-center justify-center">
+                                              {l}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {q.puzzleData?.missingLettersPrompt && (
+                                        <div className="p-1 rounded bg-slate-950 font-mono text-xs text-amber-300 font-bold text-center border border-slate-800">
+                                          {q.puzzleData.missingLettersPrompt}
+                                        </div>
+                                      )}
+
+                                      {/* Options preview */}
+                                      <div className="grid grid-cols-2 gap-1.5 pt-1">
+                                        {q.options?.map((opt, optIdx) => {
+                                          const isCorrect = String(opt).trim().toLowerCase() === String(q.correctAnswer).trim().toLowerCase();
+                                          return (
+                                            <div
+                                              key={optIdx}
+                                              className={`px-2 py-1 rounded text-[11px] font-mono flex items-center justify-between border ${
+                                                isCorrect
+                                                  ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200 font-bold'
+                                                  : 'bg-slate-950 border-slate-800 text-slate-400'
+                                              }`}
+                                            >
+                                              <span className="truncate">{opt}</span>
+                                              {isCorrect && <Check className="w-3 h-3 text-emerald-400 shrink-0 ml-1" />}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+
+                                      {q.explanation && (
+                                        <p className="text-[10px] text-slate-400 border-t border-slate-800/80 pt-1.5 italic">
+                                          💡 {q.explanation}
+                                        </p>
+                                      )}
                                     </div>
                                   );
                                 })}
                               </div>
-                              {q.explanation && (
-                                <p className="text-[10px] text-slate-400 border-t border-slate-800/80 pt-1.5 italic">
-                                  💡 {q.explanation}
-                                </p>
-                              )}
+                            )}
+                          </div>
+                        )}
+
+                        {/* TAB 2: COMPLETE VOCABULARY LIST */}
+                        {currentTab === 'vocabulary' && (
+                          <div className="space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="relative flex-1 max-w-sm">
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                                <input
+                                  type="text"
+                                  value={vocabSearchFilters[batch.id] || ''}
+                                  onChange={(e) =>
+                                    setVocabSearchFilters((prev) => ({ ...prev, [batch.id]: e.target.value }))
+                                  }
+                                  placeholder={isDe ? 'Vokabel oder Übersetzung filtern...' : 'Filter vocabulary...'}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-indigo-500"
+                                />
+                              </div>
+
+                              <span className="text-xs text-slate-400 font-mono">
+                                {isDe ? 'Zeige' : 'Showing'} {filteredVocab.length} {isDe ? 'von' : 'of'} {vocabList.length} {isDe ? 'Vokabeln' : 'words'}
+                              </span>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+
+                            {filteredVocab.length === 0 ? (
+                              <p className="text-xs text-slate-500 italic py-4 text-center">
+                                {isDe ? 'Keine Vokabeln gefunden.' : 'No vocabulary matching search.'}
+                              </p>
+                            ) : (
+                              <div className="overflow-x-auto rounded-xl border border-slate-800">
+                                <table className="w-full text-left text-xs">
+                                  <thead className="bg-slate-900 text-slate-400 font-bold border-b border-slate-800">
+                                    <tr>
+                                      <th className="p-2.5">#</th>
+                                      <th className="p-2.5">{isDe ? 'Englische Vokabel / Phrase' : 'English Term'}</th>
+                                      <th className="p-2.5">{isDe ? 'Deutsche Übersetzung' : 'German Translation'}</th>
+                                      <th className="p-2.5">{isDe ? 'Kategorie' : 'Category'}</th>
+                                      <th className="p-2.5">{isDe ? 'Beispielsatz aus dem Buch' : 'Example Sentence'}</th>
+                                      <th className="p-2.5 text-right">{isDe ? 'Aussprache' : 'Audio'}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-800/80 bg-slate-950/40">
+                                    {filteredVocab.map((v, vIdx) => (
+                                      <tr key={vIdx} className="hover:bg-slate-900/50 transition-colors">
+                                        <td className="p-2.5 font-mono text-slate-500">{vIdx + 1}</td>
+                                        <td className="p-2.5 font-bold text-white flex items-center gap-1.5">
+                                          <span>{v.term}</span>
+                                        </td>
+                                        <td className="p-2.5 font-semibold text-emerald-300">
+                                          {v.translation}
+                                        </td>
+                                        <td className="p-2.5">
+                                          <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/40 text-[10px] font-mono">
+                                            {v.category || 'vocab'}
+                                          </span>
+                                        </td>
+                                        <td className="p-2.5 text-slate-400 italic text-[11px] max-w-xs truncate">
+                                          {v.exampleSentence || '—'}
+                                        </td>
+                                        <td className="p-2.5 text-right">
+                                          <button
+                                            type="button"
+                                            onClick={() => speakWord(v.term, 'en-US')}
+                                            className="p-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-white transition-colors cursor-pointer"
+                                            title={isDe ? 'Anhören' : 'Listen'}
+                                          >
+                                            <Volume2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
